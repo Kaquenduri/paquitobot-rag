@@ -1,7 +1,10 @@
 change: build-canvas-rag-backend
-phase: verify
+phase: archived
 status: completed
-next_recommended: sdd-archive
+next_recommended: ""
+# The change is closed. Main specs in openspec/specs/ are now the source of
+# truth; the change folder is preserved under openspec/changes/archive/ as the
+# audit trail. No further SDD phases are required for this change.
 execution_mode: interactive
 artifact_store:
   mode: openspec
