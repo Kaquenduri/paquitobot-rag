@@ -1,0 +1,104 @@
+change: build-canvas-rag-backend
+phase: verify
+status: completed
+next_recommended: sdd-archive
+execution_mode: interactive
+artifact_store:
+  mode: openspec
+delivery_strategy: chained
+chain_strategy: stacked-to-main
+review_budget_lines: 800
+
+artifacts:
+  verify_report: verify-report.md
+  proposal: proposal.md
+  exploration: exploration.md
+  design: design.md
+  specs:
+    canvas-read-sync: specs/canvas-read-sync/spec.md
+    ingestion: specs/ingestion/spec.md
+    question-routing: specs/question-routing/spec.md
+    student-data-model: specs/student-data-model/spec.md
+    tenant-authentication: specs/tenant-authentication/spec.md
+  tasks: tasks.md
+  apply_progress: apply-progress.md
+
+verify_summary:
+  bounded_checks_executed:
+    - pytest tests/unit (177 passed, 30.10s, exit 0)
+    - pytest tests/smoke (36 passed, 7.55s, exit 0)
+    - ruff check app/ main.py (All checks passed!, exit 0)
+    - pip check (No broken requirements found., exit 0)
+    - grep shutil.rmtree app/ (0 matches)
+    - grep documents alembic/versions/0001_init.py (1 line, docstring only)
+    - RedactionFilter inline (***REDACTED*** present; Bearer gAAAAA… and postgresql://… absent; benign line preserved)
+  requirements: 16
+  scenarios: 30
+  scenarios_with_runtime_evidence: 30
+  scenarios_pytest: 24
+  scenarios_selftest_only: 6
+  critical: 0
+  warnings: 0
+  suggestions: 2
+  blockers: 0
+  verdict: pass
+
+applied_work_unit:
+  phase: 6
+  pr: 6
+  scope: HTTP Layer (POST /query controller, extended /healthz, HTML sanitization, Prometheus counters, optional OTLP tracing, correlation_id middleware, router mounting in app.main)
+  review_budget_status: over_800_soft_cap (PR 6 spans four new modules + two extension modules; delivery remains stacked-to-main)
+  verification:
+    selftests: "all PR 6 module _selftest() assertions passed"
+    pytest_full: "213 passed, 288 warnings in 37.65s (177 unit + 36 smoke)"
+    pytest_healthz: "4 passed in 5.28s"
+    pytest_auth_sync: "11 passed in 0.95s"
+    query_controller: "TestClient drives the full dep chain; client-supplied tenant_id is rejected (422); disable_rag_routes returns 503"
+    health_controller: "TestClient sees ollama/db/scheduler/rag_routes_disabled blocks; status flips to degraded when any dep fails"
+    correlation_id: "middleware generates UUID v4 per request, honours inbound v4 X-Correlation-ID, rejects malformed values, clears binding on exit"
+    error_body_match: "app.core.errors reuses the bound correlation_id so response body and X-Correlation-ID header always agree"
+  rolled_back: []
+
+review_workload_forecast:
+  estimated_changed_lines: "2400-3200"
+  budget_risk_400: High
+  budget_risk_800: High
+  chained_prs_recommended: Yes
+  chain_strategy: stacked-to-main
+  decision_needed_before_apply: No
+  suggested_split:
+    - pr: 1
+      name: scaffold
+      goal: FastAPI boot, settings, logging, errors, alembic init
+      status: completed
+    - pr: 2
+      name: security
+      goal: Fernet custody, backend JWT, redaction, tenant chain
+      status: completed
+    - pr: 3
+      name: schema
+      goal: SQLAlchemy models, tenant mixin, first Alembic migration
+      status: completed
+    - pr: 4
+      name: sync
+      goal: Canvas GET-only client, sync pipeline, lock, scheduler
+      status: completed
+    - pr: 5
+      name: router
+      goal: Deterministic router, T2SQL allow-list, PGVector wrap
+      status: completed
+    - pr: 6
+      name: http-layer
+      goal: Controllers, sanitization, observability, e2e
+      status: completed
+
+  carryover_notes:
+    - "workspace is not a git repository; review-authority preflight may deny admission at sdd-archive unless a repo + review transaction is recorded"
+
+completed_prior_work_units:
+  - pr: 3
+    status: completed
+    scope: Schema foundation and transaction-agnostic watermark helpers
+  - micro_step: 4.1
+    status: completed
+    scope: Canvas DTO whitelist and peer-data stripping

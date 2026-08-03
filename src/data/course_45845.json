@@ -1,0 +1,17 @@
+{
+    "course_id": 45845,
+    "course_name": "Capacitación en materia de Hostigamiento sexual 2024 para estudiantes",
+    "assignments": [
+        {
+            "assignment_id": 1180388,
+            "name": "Cuestionario final",
+            "description": "",
+            "due_at": "2024-05-07T04:59:00Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45845/assignments/1180388",
+            "submission_status": "graded",
+            "score": 18.0,
+            "submitted_at": "2025-09-22T20:47:41Z"
+        }
+    ]
+}

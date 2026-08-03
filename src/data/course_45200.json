@@ -1,0 +1,248 @@
+{
+    "course_id": 45200,
+    "course_name": "Diseño de Interfaces de Programación - C24 1ero A-A - C24 1ero B-A-A",
+    "assignments": [
+        {
+            "assignment_id": 1154352,
+            "name": "Laboratorio 1",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p><em>¡Hola!</em></p>\n<p><em>Imagino que ya revisaste los contenidos de la&nbsp;</em> <a title=\"Semana 1\" href=\"https://tecsup.instructure.com/courses/45200/pages/semana-1\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/pages/semana-1\" data-api-returntype=\"Page\"> <strong><i>Semana 1 </i></strong> </a> <em>,</em></p>\n<p><em>Ahora para que puedas aplicar lo aprendido en la clase de laboratorio:&nbsp;</em></p>\n<p><em>- Descarga <a id=\"12608144\" class=\"instructure_file_link instructure_scribd_file inline_disabled\" title=\"Enlace\" href=\"https://tecsup.instructure.com/courses/45200/files/12608144?verifier=LpfEJK81Qmm6voPUXZeSakp4XUignVJAjrG6z7v7&amp;wrap=1\" target=\"_blank\" data-canvas-previewable=\"true\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/files/12608144\" data-api-returntype=\"File\">Laboratorio01.docx</a></em></p>\n<p><em>- Desarrolla los ejercicios planteados.</em></p>\n<p><em>- Cuélgalo en Canvas en la fecha planteada por el docente.</em></p>\n<p>Saludos</p>\n<p>&nbsp;</p>\n<p><em>Y, si tienes consultas, no dudes en hacerlas en el&nbsp;</em> <a title=\"Foro de Consultas\" href=\"https://tecsup.instructure.com/courses/45200/discussion_topics/633541\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/discussion_topics/633541\" data-api-returntype=\"Discussion\"> <strong> <i>Foro de Consultas</i> </strong> <em>.</em> </a></p>\n<p>&nbsp;</p>\n<p><em>¡Éxitos!\"</em></p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-03-31T04:59:59Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1154352",
+            "submission_status": "unsubmitted",
+            "score": null,
+            "submitted_at": null
+        },
+        {
+            "assignment_id": 1154455,
+            "name": "Laboratorio 2",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p><em>Hola!</em></p>\n<p><em>Imagino que ya revisaste los contenidos de la&nbsp;</em> <a title=\"Semana 2\" href=\"https://tecsup.instructure.com/courses/45200/pages/semana-2\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/pages/semana-2\" data-api-returntype=\"Page\"> <strong><i>Semana 2 </i></strong> </a> <em>, ¿cierto?, si aún no lo has hecho,&nbsp;</em> <strong><i>¿qué esperas?</i></strong></p>\n<p><em>Ahora para que puedas aplicar lo aprendido en la clase de laboratorio.</em></p>\n<ul>\n<li><em>Descarga: <a id=\"12608145\" class=\"instructure_file_link instructure_scribd_file inline_disabled\" title=\"Enlace\" href=\"https://tecsup.instructure.com/courses/45200/files/12608145?verifier=Ta0iYPQI85BbuRw0SeG4Dh1pXT6zm0lpAWvmYcF2&amp;wrap=1\" target=\"_blank\" data-canvas-previewable=\"true\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/files/12608145\" data-api-returntype=\"File\">Laboratorio02.docx</a></em></li>\n<li><em>Desarrolla los ejercicios planteados.</em></li>\n</ul>\n<p><em>- Cuélgalo en Canvas en la fecha planteada por el docente.</em></p>\n<p>&nbsp;</p>\n<p>Recuerda que esta actividad es calificada, es importante que revises tu sistema de evaluación.</p>\n<p>&nbsp;</p>\n<p><em>Y, si tienes consultas, no dudes en hacerlas en el&nbsp;</em> <a title=\"Foro de Consultas\" href=\"https://tecsup.instructure.com/courses/45200/discussion_topics/633541\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/discussion_topics/633541\" data-api-returntype=\"Discussion\"> <strong> <i>Foro de Consultas</i> </strong> <em>.</em> </a></p>\n<p>&nbsp;</p>\n<p><em>¡Éxitos!\"</em></p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-04-08T04:59:59Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1154455",
+            "submission_status": "graded",
+            "score": 19.0,
+            "submitted_at": "2024-04-06T21:42:20Z"
+        },
+        {
+            "assignment_id": 1154129,
+            "name": " Laboratorio 3",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p><em>Hola!</em></p>\n<p><em>Imagino que ya revisaste los contenidos de la&nbsp;</em> <a title=\"Semana 3\" href=\"https://tecsup.instructure.com/courses/45200/pages/semana-3\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/pages/semana-3\" data-api-returntype=\"Page\"> <strong><i>Semana 3 </i></strong> </a> <em>,</em></p>\n<p><em>Ahora para que puedas aplicar lo aprendido en la clase de laboratorio.</em></p>\n<ul>\n<li><em>Descarga la Guía <a class=\"instructure_file_link instructure_scribd_file inline_disabled\" title=\"Laboratorio03.docx\" href=\"https://tecsup.instructure.com/courses/45200/files/12608146?verifier=vHn6Lmfsaq8LrDYOfDPFDPylwSJZqae3sE459V1A&amp;wrap=1\" target=\"_blank\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/files/12608146\" data-api-returntype=\"File\">Laboratorio03.docx</a></em></li>\n<li><em style=\"color: var(--ic-brand-font-color-dark); font-family: inherit; font-size: 1rem;\">Desarrolla los ejercicios planteados.</em><em></em></li>\n</ul>\n<p><em>- Cuélgalo en Canvas en la fecha planteada por el docente.</em></p>\n<p>&nbsp;</p>\n<p>Éxitos</p>\n<p>&nbsp;</p>\n<p><em>Y, si tienes consultas, no dudes en hacerlas en el&nbsp;</em> <a title=\"Foro de Consultas\" href=\"https://tecsup.instructure.com/courses/45200/discussion_topics/633541\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/discussion_topics/633541\" data-api-returntype=\"Discussion\"> <strong> <i>Foro de Consultas</i> </strong> <em>.</em> </a></p>\n<p>&nbsp;</p>\n<p><em>¡Éxitos!\"</em></p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-04-17T04:59:59Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1154129",
+            "submission_status": "graded",
+            "score": 20.0,
+            "submitted_at": "2024-04-16T03:23:44Z"
+        },
+        {
+            "assignment_id": 1154134,
+            "name": " Laboratorio 4",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p><em>¡Hola!</em></p>\n<p><em>Imagino que ya revisaste los contenidos de la&nbsp;</em> <a title=\"Semana 4\" href=\"https://tecsup.instructure.com/courses/45200/pages/semana-4\" data-course-type=\"wikiPages\" data-published=\"true\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/pages/semana-4\" data-api-returntype=\"Page\"> <strong><i>Semana 4</i></strong></a></p>\n<p><em>Ahora para que puedas aplicar lo aprendido en la clase de laboratorio.</em></p>\n<ul>\n<li><em>Descarga la Guía: <a id=\"12608147\" class=\"instructure_file_link instructure_scribd_file inline_disabled\" title=\"Enlace\" href=\"https://tecsup.instructure.com/courses/45200/files/12608147?verifier=5Wq3OtrtOWsk27cilZJv0lQ1HnuGHQJHZ1k9fORz&amp;wrap=1\" target=\"_blank\" data-canvas-previewable=\"true\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/files/12608147\" data-api-returntype=\"File\">Laboratorio04.docx</a></em></li>\n<li><em><a class=\"instructure_file_link instructure_scribd_file inline_disabled\" title=\"GLAB-S3-SMONTOYA-2023-02 - copia.docx\" href=\"https://tecsup.instructure.com/courses/45200/files/12479986?verifier=S6hGEcuFtrDRkJF4j275Upt02PnmMLm1z1iH74LH&amp;wrap=1\" target=\"_blank\" data-canvas-previewable=\"false\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/files/12479986\" data-api-returntype=\"File\"></a></em><span style=\"color: #000000;\"><em style=\"font-family: inherit; font-size: 1rem;\">Desarrolla los ejercicios planteados.</em></span></li>\n<li><em><span style=\"color: #000000;\"><span style=\"font-family: inherit;\"><span style=\"font-size: 1rem;\">Cuélgalo en Canvas en la fecha planteada por el docente (un archivo por equipo).</span></span></span><span style=\"color: rgba(0, 0, 0, 0); font-family: inherit;\"><span style=\"font-size: 1rem;\">e los integrantes).</span></span></em></li>\n</ul>\n<p>&nbsp;</p>\n<p>Éxitos</p>\n<p><em>Y, si tienes consultas, no dudes en hacerlas al docente.</em><em></em></p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-04-29T04:59:59Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1154134",
+            "submission_status": "graded",
+            "score": 20.0,
+            "submitted_at": null
+        },
+        {
+            "assignment_id": 1154139,
+            "name": " Laboratorio 5",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p><em>¡Hola!</em></p>\n<p><em>Imagino que ya revisaste los contenidos de la&nbsp;</em> <a title=\"Semana 5\" href=\"https://tecsup.instructure.com/courses/45200/pages/semana-5\" data-course-type=\"wikiPages\" data-published=\"true\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/pages/semana-5\" data-api-returntype=\"Page\"> <strong><i>Semana5</i></strong></a>&nbsp;</p>\n<p><em>Ahora para que puedas aplicar lo aprendido en la clase de laboratorio.</em></p>\n<ul>\n<li><em>Descarga la Guía: <a id=\"12909071\" class=\"instructure_file_link instructure_scribd_file inline_disabled\" href=\"https://tecsup.instructure.com/courses/45200/files/12909071?verifier=ucxiAwtF9dIvvyT539F8VJjaQJXWYsNJG32BfEEk&amp;wrap=1\" target=\"_blank\" data-canvas-previewable=\"true\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/files/12909071\" data-api-returntype=\"File\">Laboratorio05.docx</a></em></li>\n<li><em><a class=\"instructure_file_link instructure_scribd_file inline_disabled\" title=\"GLAB-S3-SMONTOYA-2023-02 - copia.docx\" href=\"https://tecsup.instructure.com/courses/45200/files/12479986?verifier=S6hGEcuFtrDRkJF4j275Upt02PnmMLm1z1iH74LH&amp;wrap=1\" target=\"_blank\" data-canvas-previewable=\"false\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/files/12479986\" data-api-returntype=\"File\"></a></em><span style=\"color: #000000;\"><em style=\"font-family: inherit; font-size: 1rem;\">Desarrolla los ejercicios planteados.</em></span></li>\n<li><em><span style=\"color: #000000;\"><span style=\"font-family: inherit;\"><span style=\"font-size: 1rem;\">Cuélgalo en Canvas en la fecha planteada por el docente (un archivo por equipo).</span></span></span><span style=\"color: rgba(0, 0, 0, 0); font-family: inherit;\"><span style=\"font-size: 1rem;\">e los integrantes).</span></span></em></li>\n</ul>\n<p>Aqui anexo un archivo base de código HTML: <a class=\"instructure_file_link instructure_scribd_file inline_disabled\" title=\"Ejemplo.txt\" href=\"https://tecsup.instructure.com/courses/45200/files/12479476?verifier=qbfmBySTKCsma5lzgOkXMtLNBVRG5hv8XYSoKD10&amp;wrap=1\" target=\"_blank\" data-canvas-previewable=\"false\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/files/12479476\" data-api-returntype=\"File\">Ejemplo.txt</a></p>\n<p>Éxitos</p>\n<p>&nbsp;</p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-04-29T04:59:59Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1154139",
+            "submission_status": "submitted",
+            "score": null,
+            "submitted_at": "2024-04-27T21:02:11Z"
+        },
+        {
+            "assignment_id": 1154335,
+            "name": "Laboratorio 6",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p><em>Hola!</em></p>\n<p><em>Imagino que ya revisaste los contenidos de la&nbsp;</em> <a title=\"Semana 6\" href=\"https://tecsup.instructure.com/courses/45200/pages/semana-6\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/pages/semana-6\" data-api-returntype=\"Page\"> Semana 6 </a> <em>, ¿cierto?, si aún no lo has hecho,&nbsp;</em> <strong><i>¿qué esperas?</i></strong></p>\n<p><em>Ahora para que puedas aplicar lo aprendido en la clase de laboratorio.</em></p>\n<p><em>- Descarga : <a id=\"12608149\" class=\"instructure_file_link instructure_scribd_file inline_disabled\" title=\"Enlace\" href=\"https://tecsup.instructure.com/courses/45200/files/12608149?verifier=nKgxTcxaa8giZkICflsz9JViUJ5mqCc8KolzDhdD&amp;wrap=1\" target=\"_blank\" data-canvas-previewable=\"true\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/files/12608149\" data-api-returntype=\"File\">Laboratorio06.docx</a>.</em></p>\n<p><em>- Desarrolla los ejercicios planteados.</em></p>\n<p><em>- Cuélgalo en Canvas en la fecha planteada por el docente.</em></p>\n<p>&nbsp;</p>\n<p>Recuerda que esta actividad es calificada, es importante que revises tu sistema de evaluación.</p>\n<p>&nbsp;</p>\n<p><em>Y, si tienes consultas, no dudes en hacerlas en el&nbsp;</em> <a title=\"Foro de Consultas\" href=\"https://tecsup.instructure.com/courses/45200/discussion_topics/633541\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/discussion_topics/633541\" data-api-returntype=\"Discussion\"> <strong> <i>Foro de Consultas</i> </strong> <em>.</em> </a></p>\n<p>&nbsp;</p>\n<p><em>¡Éxitos!\"</em></p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-05-06T04:59:59Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1154335",
+            "submission_status": "submitted",
+            "score": null,
+            "submitted_at": "2024-05-04T21:09:23Z"
+        },
+        {
+            "assignment_id": 1154148,
+            "name": " Laboratorio 7",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p><em>¡Hola!</em></p>\n<p><em>Imagino que ya revisaste los contenidos de la&nbsp;</em> <a title=\"Semana 7\" href=\"https://tecsup.instructure.com/courses/45200/pages/semana-7\" data-course-type=\"wikiPages\" data-published=\"true\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/pages/semana-7\" data-api-returntype=\"Page\"><strong><i>Semana</i></strong> 7</a></p>\n<p><em>Ahora para que puedas aplicar lo aprendido en la clase de laboratorio, desarrollen en equipo lo siguiente;</em></p>\n<ul>\n<li>\n<div class=\"_pxfwtyj\"><span class=\"_g20yn58\">Realize la Lección 4: Propiedades de texto CSS</span></div>\n<em style=\"font-family: inherit; font-size: 1rem;\"><span style=\"font-family: inherit;\"><span style=\"font-size: 1rem;\"><span style=\"font-family: inherit;\"><span style=\"font-size: 1rem;\">, <strong>la cual se encuentra </strong></span></span><strong>aquí</strong><span style=\"font-family: inherit;\"><span style=\"font-size: 1rem;\"><strong>: <a href=\"https://es.khanacademy.org/computing/computer-programming/html-css/css-text-properties/v/css-zen-garden\" target=\"_blank\">https://es.khanacademy.org/computing/computer-programming/html-css/css-text-properties/v/css-zen-garden</a></strong></span></span></span></span></em><em style=\"font-family: inherit; font-size: 1rem;\"><strong></strong></em></li>\n</ul>\n<p>Saludos</p>\n<p>&nbsp;</p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-05-13T04:59:59Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1154148",
+            "submission_status": "unsubmitted",
+            "score": null,
+            "submitted_at": null
+        },
+        {
+            "assignment_id": 1165752,
+            "name": " Laboratorio 8",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p><em>¡Hola!</em></p>\n<p><em>Imagino que ya revisaste los contenidos de la&nbsp;</em> <a title=\"Semana 8\" href=\"https://tecsup.instructure.com/courses/45200/pages/semana-8\" data-course-type=\"wikiPages\" data-published=\"true\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/pages/semana-8\" data-api-returntype=\"Page\"><strong><i>Semana 8</i></strong></a></p>\n<p><em>Ahora para que puedas aplicar lo aprendido en la clase de laboratorio, desarrollen en equipo lo siguiente;</em></p>\n<ul>\n<li>\n<div class=\"_pxfwtyj\"><span class=\"_g20yn58\"><span class=\"_g20yn58\">Realize la L</span></span><span style=\"color: var(--ic-brand-font-color-dark); font-family: inherit; font-size: 1rem;\">ección 7: Más selectores CSS</span></div>\n<em style=\"font-family: inherit; font-size: 1rem;\"><span style=\"font-family: inherit;\"><span style=\"font-size: 1rem;\"><span style=\"font-family: inherit;\"><span style=\"font-size: 1rem;\">, <strong>la cual se encuentra </strong></span></span><strong>aquí</strong><span style=\"font-family: inherit;\"><span style=\"font-size: 1rem;\"><strong>:&nbsp; &nbsp;</strong></span></span></span></span></em><a style=\"font-family: inherit; font-size: 1rem;\" href=\"https://es.khanacademy.org/computing/computer-programming/html-css/more-css-selectors/pt/using-multiple-css-classes\" target=\"_blank\">https://es.khanacademy.org/computing/computer-programming/html-css/more-css-selectors/pt/using-multiple-css-classes</a></li>\n</ul>\n<p>Saludos</p>\n<p>&nbsp;</p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-05-20T04:59:59Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1165752",
+            "submission_status": "unsubmitted",
+            "score": null,
+            "submitted_at": null
+        },
+        {
+            "assignment_id": 1154342,
+            "name": "Laboratorio 9",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p><em>Hola!</em></p>\n<p><em>Imagino que ya revisaste los contenidos de la&nbsp;</em> <a title=\"Semana 9\" href=\"https://tecsup.instructure.com/courses/45200/pages/semana-9\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/pages/semana-9\" data-api-returntype=\"Page\"> Semana 9&nbsp;</a><em>, ¿cierto?, si aún no lo has hecho,&nbsp;</em> <strong><i>¿qué esperas?</i></strong></p>\n<p><em>Ahora para que puedas aplicar lo aprendido en la clase de laboratorio.</em></p>\n<p><em>- Descarga <a id=\"12608150\" class=\"instructure_file_link instructure_scribd_file inline_disabled\" title=\"Enlace\" href=\"https://tecsup.instructure.com/courses/45200/files/12608150?verifier=VKsqgp505i4XVY1wdahSYuRNpJZSqHQp74YmUOi6&amp;wrap=1\" target=\"_blank\" data-canvas-previewable=\"true\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/files/12608150\" data-api-returntype=\"File\">Laboratorio09.docx</a>.</em></p>\n<p><em>- Desarrolla los ejercicios planteados.</em></p>\n<p><em>- Cuélgalo en Canvas en la fecha planteada por el docente.</em></p>\n<p>&nbsp;</p>\n<p>Recuerda que esta actividad es calificada, es importante que revises tu sistema de evaluación.</p>\n<p>&nbsp;</p>\n<p><em>Y, si tienes consultas, no dudes en hacerlas en el&nbsp;</em> <a title=\"Foro de Consultas\" href=\"https://tecsup.instructure.com/courses/45200/discussion_topics/633541\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/discussion_topics/633541\" data-api-returntype=\"Discussion\"> <strong> <i>Foro de Consultas</i> </strong> <em>.</em> </a></p>\n<p>&nbsp;</p>\n<p><em>¡Éxitos!\"</em></p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-05-31T04:59:59Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1154342",
+            "submission_status": "graded",
+            "score": 20.0,
+            "submitted_at": "2024-05-31T04:06:33Z"
+        },
+        {
+            "assignment_id": 1202012,
+            "name": "Laboratorio 10",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p><em>Hola!</em></p>\n<p><em>Imagino que ya revisaste los contenidos de la&nbsp;</em> <a title=\"Semana 10\" href=\"https://tecsup.instructure.com/courses/45200/pages/g67daddd49eb730637ed81ae2fde79111\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/pages/g67daddd49eb730637ed81ae2fde79111\" data-api-returntype=\"Page\"> <strong><i>Semana 10&nbsp;</i></strong></a><em>, ¿cierto?, si aún no lo has hecho,&nbsp;</em> <strong><i>¿qué esperas?</i></strong></p>\n<p><em>Ahora para que puedas aplicar lo aprendido en la clase de laboratorio.</em></p>\n<p><em>- Descarga la <a class=\"instructure_file_link instructure_scribd_file inline_disabled\" title=\"Laboratorio10 v2.docx\" href=\"https://tecsup.instructure.com/courses/45200/files/13196446?verifier=jI9UcC6FEWVM9yg0avwLVawN8C0toUUfZ4MMpIES&amp;wrap=1\" target=\"_blank\" data-canvas-previewable=\"false\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/files/13196446\" data-api-returntype=\"File\">Laboratorio10.docx</a></em></p>\n<p><em>- Desarrolla los ejercicios planteados.</em></p>\n<p><em>- Cuélgalo en Canvas en la fecha planteada por el docente.</em></p>\n<p>&nbsp;</p>\n<p>Recuerda que esta actividad es calificada, es importante que revises tu sistema de evaluación.</p>\n<p>&nbsp;</p>\n<p><em>Y, si tienes consultas, no dudes en hacerlas en el&nbsp;</em> <a title=\"Foro de Consultas\" href=\"$CANVAS_OBJECT_REFERENCE$/discussion_topics/g52d5a5f40b9d0afc7aa63695d0abd662\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/discussion_topics/633541\" data-api-returntype=\"Discussion\"> <strong> <i>Foro de Consultas</i> </strong> <em>.</em> </a></p>\n<p>&nbsp;</p>\n<p><em>¡Éxitos!\"</em></p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-06-03T04:59:59Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1202012",
+            "submission_status": "submitted",
+            "score": null,
+            "submitted_at": "2024-06-01T20:50:27Z"
+        },
+        {
+            "assignment_id": 1204491,
+            "name": "Laboratorio 11",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p><em>Hola!</em></p>\n<p><em>Imagino que ya revisaste los contenidos de la&nbsp;</em> <strong><i>Semana 11</i></strong><em>, ¿cierto?, si aún no lo has hecho,&nbsp;</em> <strong><i>¿qué esperas?</i></strong></p>\n<p><em>Ahora para que puedas aplicar lo aprendido en la clase de laboratorio.</em></p>\n<p><em>- Descarga la <a id=\"13229458\" class=\"instructure_file_link instructure_scribd_file inline_disabled\" href=\"https://tecsup.instructure.com/courses/45200/files/13245549?verifier=rPMbpjvKQFPaAdXNFlHfbFMoFgTzNXfviSMAIBk3&amp;wrap=1\" target=\"_blank\" data-canvas-previewable=\"true\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/files/13245549\" data-api-returntype=\"File\">Laboratorio11.docx</a></em></p>\n<p><em>- Desarrolla los ejercicios planteados.</em></p>\n<p><em>- Cuélgalo en Canvas en la fecha planteada por el docente.</em></p>\n<p>&nbsp;</p>\n<p>Recuerda que esta actividad es calificada, es importante que revises tu sistema de evaluación.</p>\n<p>&nbsp;</p>\n<p><em>Y, si tienes consultas, no dudes en hacerlas en el&nbsp;</em> <a title=\"Foro de Consultas\" href=\"$CANVAS_OBJECT_REFERENCE$/discussion_topics/g020e6081c707371bed89b9f79acbdeae\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/discussion_topics/633541\" data-api-returntype=\"Discussion\"> <strong> <i>Foro de Consultas</i> </strong> <em>.</em> </a></p>\n<p>&nbsp;</p>\n<p><em>¡Éxitos!\"</em></p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-06-11T04:59:59Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1204491",
+            "submission_status": "graded",
+            "score": 17.0,
+            "submitted_at": "2024-06-09T20:17:08Z"
+        },
+        {
+            "assignment_id": 1207014,
+            "name": "Laboratorio 12",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p><em>Hola!</em></p>\n<p><em>Imagino que ya revisaste los contenidos de la&nbsp;</em> <strong><i>Semana 12</i></strong><em>, ¿cierto?, si aún no lo has hecho,&nbsp;</em> <strong><i>¿qué esperas?</i></strong></p>\n<p><em>Ahora para que puedas aplicar lo aprendido en la clase de laboratorio.</em></p>\n<p><em>- Descarga la <a id=\"13287411\" class=\"instructure_file_link instructure_scribd_file inline_disabled\" href=\"https://tecsup.instructure.com/courses/45200/files/13291378?verifier=PjJeBILAHDx4K1RmjldL5iOpE8PQCasG7VKmQBZX&amp;wrap=1\" target=\"_blank\" data-canvas-previewable=\"true\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/files/13291378\" data-api-returntype=\"File\">Laboratorio12.docx</a></em></p>\n<p><em>- Desarrolla los ejercicios planteados.</em></p>\n<p><em>- Cuélgalo en Canvas en la fecha planteada por el docente.</em></p>\n<p>&nbsp;</p>\n<p>Recuerda que esta actividad es calificada, es importante que revises tu sistema de evaluación.</p>\n<p>&nbsp;</p>\n<p><em>Y, si tienes consultas, no dudes en hacerlas en el&nbsp;</em> <a title=\"Foro de Consultas\" href=\"$CANVAS_OBJECT_REFERENCE$/discussion_topics/g52d5a5f40b9d0afc7aa63695d0abd662\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45199/discussion_topics/636891\" data-api-returntype=\"Discussion\"> <strong> <i>Foro de Consultas</i> </strong> <em>.</em> </a></p>\n<p>&nbsp;</p>\n<p><em>¡Éxitos!\"</em></p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-06-17T04:59:59Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1207014",
+            "submission_status": "unsubmitted",
+            "score": null,
+            "submitted_at": null
+        },
+        {
+            "assignment_id": 1209211,
+            "name": "Laboratorio 13",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p><em>Hola!</em></p>\n<p><em>Imagino que ya revisaste los contenidos de la&nbsp;</em> <strong><i>Semana 12</i></strong><em>, ¿cierto?, si aún no lo has hecho,&nbsp;</em> <strong><i>¿qué esperas?</i></strong></p>\n<p><em>Ahora para que puedas aplicar lo aprendido en la clase de laboratorio.</em></p>\n<p><em>- Descarga la <a id=\"13315670\" class=\"instructure_file_link instructure_scribd_file inline_disabled\" href=\"https://tecsup.instructure.com/courses/45200/files/13335849?verifier=vN0LG8FMQRl1P2EpLCOJqiH6dK0HUJH4zWKELxJd&amp;wrap=1\" target=\"_blank\" data-canvas-previewable=\"true\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/files/13335849\" data-api-returntype=\"File\">Laboratorio13.docx</a></em></p>\n<p><em>- Desarrolla los ejercicios planteados.</em></p>\n<p><em>- Cuélgalo en Canvas en la fecha planteada por el docente.</em></p>\n<p>&nbsp;</p>\n<p>Recuerda que esta actividad es calificada, es importante que revises tu sistema de evaluación.</p>\n<p>&nbsp;</p>\n<p><em>Y, si tienes consultas, no dudes en hacerlas en el&nbsp;</em> <a title=\"Foro de Consultas\" href=\"$CANVAS_OBJECT_REFERENCE$/discussion_topics/g52d5a5f40b9d0afc7aa63695d0abd662\" data-api-endpoint=\"https://tecsup.instructure.com/api/v1/courses/45200/discussion_topics/633541\" data-api-returntype=\"Discussion\"> <strong> <i>Foro de Consultas</i> </strong> <em>.</em> </a></p>\n<p>&nbsp;</p>\n<p><em>¡Éxitos!\"</em></p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-06-23T04:59:59Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1209211",
+            "submission_status": "unsubmitted",
+            "score": null,
+            "submitted_at": null
+        },
+        {
+            "assignment_id": 1207015,
+            "name": "PROYECTO FINAL",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><h3>Descripción del Proyecto Final: Creación de una Página Web</h3>\n<p><strong>Objetivos:</strong></p>\n<ul>\n<li>Diseñar y desarrollar una página web utilizando HTML, CSS, JavaScript y Bootstrap.</li>\n<li>Aplicar conocimientos básicos de programación web sin incorporar gestión de bases de datos.</li>\n<li>Fomentar el trabajo en equipo y la distribución eficiente de tareas.</li>\n</ul>\n<p><strong>Requisitos:</strong></p>\n<ul>\n<li><strong>Grupos de Trabajo:</strong> De 6 a 7 integrantes.</li>\n<li><strong>Tecnologías a Utilizar:</strong> HTML, CSS, JavaScript y Bootstrap.</li>\n<li><strong>Funcionalidades:</strong> La página debe incluir diversas funciones utilizando JavaScript para demostrar la habilidad práctica de los integrantes, a pesar de ser de nivel básico y no tener backend funcional.</li>\n<li><strong>Temática:</strong> Libre elección. Los grupos pueden elegir el tema que consideren más relevante o de su interés.</li>\n</ul>\n<p><strong>Estructura del Proyecto:</strong></p>\n<ol>\n<li><strong>Presentación de Avances:</strong> Durante las semanas 14 y 15, cada grupo presentará el progreso de su proyecto. Esto incluye diseño inicial, funcionalidades implementadas y planes para finalización.</li>\n<li><strong>Presentación Final y Entrega:</strong> En la semana 16, los grupos presentarán su página web finalizada. Esta presentación incluirá:\n<ul>\n<li><strong>Informe Escrito:</strong> Detalle de la estructura de la página, tecnologías usadas, funciones implementadas y justificación del diseño.</li>\n<li><strong>Video de Presentación:</strong> Debe durar entre 10 a 15 minutos donde se explique en detalle todo el desarrollo del proyecto. Todos los integrantes del grupo deben participar activamente en el video para ser elegibles para la calificación.</li>\n</ul>\n</li>\n</ol>\n<p><strong>Contenido Adicional a Incluir en el VIDEO/INFORME:</strong></p>\n<ul>\n<li><strong>Objetivo de la Aplicación:</strong> Describir qué problema resuelve o qué necesidad satisface la página web.</li>\n<li><strong>Público Objetivo:</strong> Identificar a quién está dirigida la página web y por qué.</li>\n<li><strong>Impacto Esperado:</strong> Explicar cómo esta página web podría beneficiar o atraer al público objetivo.</li>\n<li><strong>Aspectos Creativos:</strong> Cualquier elemento innovador o creativo que diferencie la página web en términos de diseño o funcionalidad.</li>\n</ul>\n<p><strong>Evaluación:</strong></p>\n<ul>\n<li>La evaluación se basará en la complejidad y uso de las características implementadas, la calidad del informe, la creatividad del proyecto y la efectividad de la presentación en video.</li>\n</ul>\n<p><strong>Sugerencias para Mejorar la Presentación:</strong></p>\n<ul>\n<li><strong>Interacción:</strong> Demostrar interacción con la página durante el video.</li>\n<li><strong>Desafíos y Aprendizajes:</strong> Describir cualquier desafío que el equipo enfrentó y cómo lo superaron, así como los aprendizajes obtenidos del proyecto.</li>\n</ul>\n<p><strong>Fecha Límite de Entrega:</strong></p>\n<ul>\n<li><strong>Informe y Video:</strong> A entregar antes de la presentación final en la semana 16.</li>\n</ul><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-07-13T19:59:59Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1207015",
+            "submission_status": "graded",
+            "score": 20.0,
+            "submitted_at": "2024-07-13T19:28:49Z"
+        },
+        {
+            "assignment_id": 1212713,
+            "name": "Foro teoria semana 15",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p>Explica con un ejemplo como usarías los componentes de bootstrap.</p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-07-06T04:59:00Z",
+            "points_possible": 1.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1212713",
+            "submission_status": "unsubmitted",
+            "score": null,
+            "submitted_at": null
+        },
+        {
+            "assignment_id": 1196090,
+            "name": "EJERCICIO SEMANA 9",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p><a href=\"https://codepen.io/Yanina-Villegas-Condori/pen/xxNVRgv?editors=1100\" target=\"_blank\">https://codepen.io/Yanina-Villegas-Condori/pen/xxNVRgv?editors=1100</a></p>\n<p>&nbsp;</p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-05-21T01:20:00Z",
+            "points_possible": 0.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1196090",
+            "submission_status": "submitted",
+            "score": null,
+            "submitted_at": "2024-05-21T01:17:06Z"
+        },
+        {
+            "assignment_id": 1202768,
+            "name": "EJERCICIOS SEMANA 11",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p>ADJUNTA LA CAPTURA O FOTO DE LOS EJERCICIOS</p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": null,
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1202768",
+            "submission_status": "unsubmitted",
+            "score": null,
+            "submitted_at": null
+        },
+        {
+            "assignment_id": 1183175,
+            "name": "Foro Teoria Semana 04",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p>Conoces de algún Software que ayude a las personas con habilidades especiales? Consideras que estos Software son importantes?&nbsp;</p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-04-20T04:59:59Z",
+            "points_possible": 1.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1183175",
+            "submission_status": "unsubmitted",
+            "score": null,
+            "submitted_at": null
+        },
+        {
+            "assignment_id": 1182523,
+            "name": "Examen Teoría 01",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p>Estimados alumnos: &nbsp;la duración del examen, será de 20 minutos.</p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": null,
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1182523",
+            "submission_status": "graded",
+            "score": 18.0,
+            "submitted_at": "2024-04-17T15:30:28Z"
+        },
+        {
+            "assignment_id": 1193247,
+            "name": "Examen Teoría 02",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p>Estimado estudiante, el examen tendrá una duración de 15 minutos.</p>\n<p>Suerte!!</p>\n<p>&nbsp;</p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-05-14T00:28:00Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1193247",
+            "submission_status": "graded",
+            "score": 18.0,
+            "submitted_at": "2024-05-14T00:15:19Z"
+        },
+        {
+            "assignment_id": 1205062,
+            "name": "Examen Teoría 03",
+            "description": "<link rel=\"stylesheet\" href=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139077/tecsup.instructure.css\"><p><span>Estimados alumnos: &nbsp;la duración del examen, será de15 minutos</span></p><script src=\"https://instructure-uploads.s3.amazonaws.com/account_81840000000000001/attachments/139278/js-logo.js\"></script>",
+            "due_at": "2024-06-11T00:40:00Z",
+            "points_possible": 20.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1205062",
+            "submission_status": "graded",
+            "score": 15.0,
+            "submitted_at": "2024-06-11T00:11:07Z"
+        },
+        {
+            "assignment_id": 1215459,
+            "name": "SEMANA 16",
+            "description": "",
+            "due_at": "2024-07-10T04:59:59Z",
+            "points_possible": 5.0,
+            "html_url": "https://tecsup.instructure.com/courses/45200/assignments/1215459",
+            "submission_status": "unsubmitted",
+            "score": null,
+            "submitted_at": null
+        }
+    ]
+}

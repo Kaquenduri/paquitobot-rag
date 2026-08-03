@@ -1,0 +1,80 @@
+schema: spec-driven
+
+project:
+  name: primer-rag
+  display_name: "Primer RAG"
+  root: /mnt/c/Users/Administrador/Desktop/PROYECTOS/Primer RAG
+  git: false
+
+tools:
+  pytest: "/mnt/c/Users/Administrador/langchain/Scripts/python.exe -m pytest"
+  ruff: "/mnt/c/Users/Administrador/langchain/Scripts/python.exe -m ruff"
+
+context: |
+  Tech stack: Python 3.14 (venv at C:\Users\Administrador\langchain), LangChain 0.3.9, langchain-core 0.3.21, langchain-community 0.3.9, langchain-text-splitters 0.3.2, langchain-ollama (OllamaEmbeddings), langchain-google-genai (init_chat_model), langchain-postgres (PGVectorStore).
+  Vector stores: ChromaDB 0.5.20 (persistent at ./chroma) and Supabase PGVector (table `documents`).
+  Embeddings: Ollama local model `qwen3-embedding:8b`, 1024 dimensions.
+  LLM: Google Gemini 2.5 Flash via init_chat_model.
+  Data source: Canvas LMS REST API (Instructure). Extracted via `src/extract_canvas_data.py` -> JSON in `src/data/`.
+  Architecture: Script-driven end-to-end pipeline orchestrated in `main.py`; modular boundaries in `src/` for ingestion (extract_canvas_data), loading/chunking (text_processor), and persistence (chroma_db, supabase).
+  Testing: pytest 9.1.1 with pytest-asyncio 1.4.0 and pytest-cov 7.1.0; Ruff 0.16.1 and mypy 2.3.0 configured. strict_tdd disabled.
+  Style: Mixed Spanish/English inline comments; PEP 8 implicit only; Ruff line length 100 and Python 3.14 target.
+
+# Persisted separately per openspec-convention.md; kept inline for human-readability.
+testing:
+  strict_tdd: false
+  strict_tdd_reason: "Test runner bootstrap is available; strict TDD remains disabled by the configured change capability."
+  detected_at: 2026-08-02
+
+  runner:
+    command: "/mnt/c/Users/Administrador/langchain/Scripts/python.exe -m pytest -q"
+    framework: pytest
+
+  layers:
+    unit: { available: true, tool: pytest }
+    integration: { available: false, tool: "—" }
+    e2e: { available: false, tool: "—" }
+
+  coverage:
+    available: true
+    command: "/mnt/c/Users/Administrador/langchain/Scripts/python.exe -m pytest --cov=tests --cov-report=term-missing"
+
+  quality:
+    linter:       { available: true, command: "/mnt/c/Users/Administrador/langchain/Scripts/python.exe -m ruff check" }
+    type_checker: { available: true, command: "/mnt/c/Users/Administrador/langchain/Scripts/python.exe -m mypy" }
+    formatter:    { available: false, command: "" }
+
+  notes:
+    - "Runtime env path: /mnt/c/Users/Administrador/langchain/Scripts/python.exe (Python 3.14.2)"
+    - "Verified-present libs in venv: langchain, langchain_core, langchain_community, langchain_text_splitters, langchain_postgres, langchain_ollama, langchain_google_genai, chromadb, openai, pydantic, pydantic-settings, requests, python-dotenv, pypdf, httpx, tenacity."
+    - "Testing tools are pinned in requirements.txt; app/ import smoke cases skip modules not yet created by PRs 1-6."
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes (data wipes in chroma/ are destructive; `save_to_chroma_db` deletes the directory).
+  specs:
+    - Use Given/When/Then for scenarios.
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY).
+    - Secrets (CANVAS_API_TOKEN, SUPABASE_DATABASE_URL, GEMINI_API_KEY) MUST NEVER be persisted to openspec artifacts or printed in verify reports.
+  design:
+    - Include sequence diagrams for ingestion -> embedding -> retrieval -> answer flows when proposing changes that cross module boundaries.
+    - Document architecture decisions with rationale; flag any decision that would change vector store, embedding model, or chunking parameters.
+    - LangChain community packages are sunset; prefer standalone integrations (langchain-ollama, langchain-google-genai, langchain-postgres) when adding new loaders/stores.
+  tasks:
+    - Group by phase, use hierarchical numbering.
+    - Keep tasks completable in one session.
+    - Network-touching tasks MUST mark side effects (writes to Chroma/PGVector, Canvas API calls) explicitly.
+  apply:
+    guidelines:
+      - Follow existing module layout under src/ and keep main.py as the orchestrator only.
+      - Never log or persist values read from .env.
+    tdd: false
+    test_command: "/mnt/c/Users/Administrador/langchain/Scripts/python.exe -m pytest -q"
+    python_executable: "/mnt/c/Users/Administrador/langchain/Scripts/python.exe"
+  verify:
+    test_command: "/mnt/c/Users/Administrador/langchain/Scripts/python.exe -m pytest -q"
+    build_command: ""
+    coverage_threshold: 0
+    smoke_command: "/mnt/c/Users/Administrador/langchain/Scripts/python.exe -c \"import langchain, chromadb, langchain_postgres, langchain_ollama, langchain_google_genai; print('ok')\""
+  archive:
+    - Warn before merging destructive deltas (especially anything that re-creates the chroma/ directory).
