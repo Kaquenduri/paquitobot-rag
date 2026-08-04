@@ -21,6 +21,7 @@ from app.canvas.client import CanvasClient
 from app.core.config import Settings
 from app.core.logging import get_logger
 from app.security.token_crypto import InvalidToken as CanvasTokenInvalid
+from app.security.token_crypto import TokenCipher
 from app.services.tenant_service import TenantNotFound, TenantService
 from app.sync.lock import release_sync_lock, try_acquire_sync_lock
 from app.sync.pipeline import SyncResult, sync_tenant
@@ -67,27 +68,50 @@ class CanvasService:
     ) -> SyncResult:
         """Run synchronization for a server-derived ``tenant_id``.
 
-        ``session`` is optional for compatibility with scheduler/controller
-        callers that already own a request transaction.  When omitted, the
-        service creates an isolated session from its injected factory or the
-        standard database dependency.  In both paths the pipeline owns the
-        watermark transaction and uses the same per-tenant lock.
+        A caller-provided session is used for both credential lookup and the
+        atomic pipeline.  Without one, the service opens an isolated session
+        from its factory (or the standard database dependency).  Persisted SQL
+        credentials are preferred; the legacy in-memory store is consulted
+        only when no SQL row exists, preserving PR 2/3 harness compatibility.
         """
+        if session is not None:
+            return await self._run_with_session(session, tenant_id)
+        return await self._run_with_owned_session(tenant_id)
+
+    def _resolve_canvas_token(
+        self,
+        session: Session,
+        tenant_id: uuid.UUID,
+    ):
+        """Resolve a tenant credential from SQL, then the legacy store."""
+        if isinstance(self._tenant_service, TenantService):
+            cipher = TokenCipher(self._settings.tenant_token_key)
+            persisted_service = TenantService(
+                ciphers={cipher.key_version: cipher},
+                session=session,
+            )
+            if persisted_service.has_credentials(tenant_id):
+                return persisted_service.get_decrypted_canvas_token(tenant_id)
+        return self._tenant_service.get_decrypted_canvas_token(tenant_id)
+
+    async def _run_with_session(
+        self,
+        session: Session,
+        tenant_id: uuid.UUID,
+    ) -> SyncResult:
         try:
-            token = self._tenant_service.get_decrypted_canvas_token(tenant_id)
+            token = self._resolve_canvas_token(session, tenant_id)
+            if inspect.isawaitable(token):
+                token = await token
         except (TenantNotFound, CanvasTokenInvalid, UnicodeError) as exc:
             raise TenantCredentialsMissing(str(tenant_id)) from exc
-        if inspect.isawaitable(token):
-            token = await token
 
         client = self._client_factory(
             base_url=self._settings.canvas_api_base_url,
             token_provider=lambda: token,
         )
         try:
-            if session is not None:
-                return await self._run_locked(session, tenant_id, client)
-            return await self._run_with_owned_session(tenant_id, client)
+            return await self._run_locked(session, tenant_id, client)
         finally:
             close = getattr(client, "aclose", None)
             if callable(close):
@@ -133,11 +157,16 @@ class CanvasService:
     async def _run_with_owned_session(
         self,
         tenant_id: uuid.UUID,
-        client: CanvasClient,
     ) -> SyncResult:
         if self._session_factory is not None:
             with self._session_factory() as owned_session:
-                return await self._run_locked(owned_session, tenant_id, client)
+                try:
+                    result = await self._run_with_session(owned_session, tenant_id)
+                    owned_session.commit()
+                    return result
+                except Exception:
+                    owned_session.rollback()
+                    raise
 
         # Import lazily so pure unit imports do not instantiate a production
         # engine or require a remote database.
@@ -146,7 +175,12 @@ class CanvasService:
         session_generator = get_db_session(self._settings)
         owned_session = next(session_generator)
         try:
-            return await self._run_locked(owned_session, tenant_id, client)
+            result = await self._run_with_session(owned_session, tenant_id)
+            owned_session.commit()
+            return result
+        except Exception:
+            owned_session.rollback()
+            raise
         finally:
             try:
                 next(session_generator, None)
@@ -244,10 +278,52 @@ __all__ = [
 
 
 def _selftest() -> None:
-    """Run service invariants without credentials, network, or a database."""
+    """Run credential fallback invariants without network or real secrets."""
+    from cryptography.fernet import Fernet
+
+    from app.core.db import engine_for_url, session_factory_for
+    from app.models import Base
+
     error = SyncThrottled(retry_after_seconds=0)
     assert error.retry_after_seconds == 1
     assert CanvasService.run_sync_for_tenant.__name__ == "run_sync_for_tenant"
+
+    key = Fernet.generate_key().decode("ascii")
+    settings = Settings(
+        supabase_database_url="postgresql+psycopg://127.0.0.1:1/selftest",
+        tenant_token_key=key,
+        backend_secret="selftest-backend-secret-with-sufficient-length",
+        gemini_api_key="selftest-gemini-placeholder",
+        ollama_host="http://127.0.0.1:1",
+        canvas_api_base_url="https://canvas.invalid/api/v1",
+        scheduler_enabled=False,
+    )
+    engine = engine_for_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = session_factory_for(engine)
+    cipher = TokenCipher(key)
+    try:
+        with factory() as seed_session:
+            persisted = TenantService(
+                ciphers={cipher.key_version: cipher},
+                session=seed_session,
+            )
+            tenant = persisted.get_or_create_tenant("canvas-service-selftest")
+            persisted.store_canvas_token(tenant.id, "selftest-canvas-token", cipher)
+            seed_session.commit()
+
+        with factory() as read_session:
+            service = CanvasService(
+                settings=settings,
+                tenant_service=TenantService(),
+            )
+            assert (
+                service._resolve_canvas_token(read_session, tenant.id)
+                == "selftest-canvas-token"
+            )
+    finally:
+        Base.metadata.drop_all(engine)
+        engine.dispose()
 
 
 if __name__ == "__main__":  # pragma: no cover - manual executable assertion

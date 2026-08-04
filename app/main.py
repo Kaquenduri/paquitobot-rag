@@ -55,14 +55,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if settings.scheduler_enabled:
         # PR 4 starts only the sync scheduler here.
         from app.core.db import make_engine_from_settings, session_factory_for
+        from app.services.canvas_service import CanvasService
         from app.services.tenant_service import get_tenant_service
         from app.sync.scheduler import SyncScheduler
 
         engine = make_engine_from_settings(settings)
+        session_factory = session_factory_for(engine)
+        tenant_service = get_tenant_service()
         scheduler = SyncScheduler(
             settings,
-            session_factory=session_factory_for(engine),
-            tenant_service=get_tenant_service(),
+            session_factory=session_factory,
+            tenant_service=tenant_service,
+            sync_service=CanvasService(
+                settings=settings,
+                tenant_service=tenant_service,
+                session_factory=session_factory,
+            ),
         )
         scheduler.start()
         app.state.sync_scheduler = scheduler
@@ -105,6 +113,13 @@ def create_app() -> FastAPI:
         redoc_url=None,
         openapi_url="/openapi.json",
     )
+
+    from app.services.tenant_service import SESSION_STORE_STATE_FLAG
+
+    # Canonical application requests must use durable SQLAlchemy tenant
+    # storage.  Standalone PR 2/3 router harnesses omit this explicit marker
+    # and retain their in-memory compatibility path.
+    setattr(app.state, SESSION_STORE_STATE_FLAG, True)
 
     register_exception_handlers(app)
     app.add_middleware(CorrelationIdMiddleware)

@@ -97,6 +97,7 @@ review_workload_forecast:
 
   carryover_notes:
     - "workspace is not a git repository; review-authority preflight may deny admission at sdd-archive unless a repo + review transaction is recorded"
+    - "Post-archive fix: auth wiring now injects SQLAlchemy sessions, probes Canvas before encrypting, persists canvas_credentials, and resolves credentials by tenant_id for manual and scheduled sync; verified offline with SQLite plus MockTransport (177 unit, 36 smoke, Ruff clean)."
 
 completed_prior_work_units:
   - pr: 3

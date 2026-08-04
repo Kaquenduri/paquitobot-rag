@@ -99,3 +99,56 @@ PR 6 also touched:
 ## Next
 
 Proceed to `sdd-verify-pr6`.
+
+## Post-archive fix: auth wiring
+
+**Status:** completed on 2026-08-04 as one autonomous `stacked-to-main`
+post-archive work unit (standard mode; no new files under `tests/`).
+**Review impact:** 773 authored additions + deletions, within the configured 800-line budget.
+
+### Diagnosis and implementation
+
+- `POST /auth/canvas/connect` resolved the process-wide in-memory
+  `TenantService`, so a successful Canvas probe returned 204 without writing
+  `tenants` or `canvas_credentials` through SQLAlchemy.
+- `TenantRepository` now exposes the durable contract required by the HTTP
+  boundary: `get_or_create_tenant(...) -> UUID`, encrypted credential upsert
+  via `store_canvas_token(...) -> bool`, and tenant/key-version lookup via
+  `get_canvas_token(...) -> bytes | None`. `TenantService` retains its
+  `_memory_store` compatibility path and the original plaintext-plus-cipher
+  call shape used by PR 2/3 tests.
+- `app.controllers.auth` now injects `Depends(get_db_session)`, probes Canvas
+  `GET /users/self` before any write, encrypts with `TokenCipher`, commits the
+  tenant/credential rows, and returns the existing secret-safe
+  `canvas_token_invalid` 401 response when validation fails.
+- The canonical app marks tenant custody as SQLAlchemy-backed. The dependency
+  chain, the manual sync controller's existing session handoff, Canvas service,
+  and scheduler now read the persisted credential by server-derived
+  `tenant_id`; standalone PR 2/3 harnesses retain the explicit in-memory
+  fallback.
+- `app.sync.pipeline` already receives a constructed GET-only `CanvasClient`
+  plus server-derived `tenant_id` and contained no in-memory credential-store
+  reference, so no pipeline change was required.
+- Pytest settings sources now ignore deployment `.env` / secret-file sources
+  while a test is running. This keeps the offline suites from consuming real
+  deployment credentials; production `.env` loading is unchanged.
+
+### Work Unit Evidence
+
+| Evidence | Command / boundary | Exact result |
+|---|---|---|
+| Focused tests | `python.exe -m pytest -q --no-cov tests/unit/test_tenant_service.py tests/unit/test_tenant_service_session.py tests/unit/test_canvas_service.py tests/unit/test_deps_chain.py tests/unit/test_sync_scheduler.py tests/smoke/test_auth_controller.py tests/smoke/test_sync_controller.py` | 53 passed, 209 warnings, exit 0 |
+| Runtime harness | `python.exe -m app.controllers.auth` with FastAPI `TestClient`, SQLite `StaticPool`, and `httpx.MockTransport` | exit 0; accepted token created one encrypted `canvas_credentials` row; rejected token returned 401 and did not rotate the persisted ciphertext |
+| Repository/service selftests | `python.exe -m app.services.tenant_service` and `python.exe -m app.services.canvas_service` | exit 0; repository insert/update/key-version lookup and SQL-first credential resolution passed |
+| Unit suite | `python.exe -m pytest -q --no-cov tests/unit` | 177 passed, 116 warnings in 21.81s, exit 0 |
+| Smoke suite | `python.exe -m pytest -q --no-cov tests/smoke` | 36 passed, 172 warnings in 4.81s, exit 0 |
+| Lint | `python.exe -m ruff check app/ main.py` | `All checks passed!`, exit 0 |
+| Runtime isolation | SQLite in memory + synthetic Fernet material + `httpx.MockTransport`; no Supabase or Canvas connection | PASS |
+| Rollback boundary | Revert the auth/session wiring in `app/controllers/auth.py`, `app/core/{db,deps}.py`, `app/services/{tenant,canvas}_service.py`, and `app/main.py`; revert pytest source isolation in `app/core/config.py` | Existing schema/migration and unrelated RAG behavior remain untouched |
+
+### Preserved behavior
+
+Redaction, bound `correlation_id`, `DISABLE_RAG_ROUTES`, and `LEGACY_MODE`
+remain intact. No commit or push was created. Deployment validation remains an
+operator action; resume the Supabase guide from the JWT/token-connect checks
+without reusing or exposing credential values.
