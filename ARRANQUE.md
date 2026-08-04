@@ -6,6 +6,9 @@ con Python 3.13. Si algo no está en esta guía, es porque no lo probé.
 
 **Tiempo:** unos 20 minutos, casi todo esperando descargas.
 
+Para el flujo de ramas y cómo trabajamos los dos sin pisarnos, mira
+**[TRABAJO_EN_EQUIPO.md](TRABAJO_EN_EQUIPO.md)**.
+
 ---
 
 ## Qué vas a tener al final
