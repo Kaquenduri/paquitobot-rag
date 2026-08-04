@@ -63,13 +63,34 @@ class Settings(BaseSettings):
         ...,
         description="HMAC secret for backend JWT (HS256) and signature checks.",
     )
-    gemini_api_key: str = Field(
-        ...,
-        description="Google Gemini API key used by the LLM router.",
-    )
     ollama_host: str = Field(
         ...,
         description="Base URL of the local Ollama server (e.g. http://127.0.0.1:11434).",
+    )
+
+    # --- LLM de chat (cualquier proveedor compatible con OpenAI) ---
+    # Ollama expone /v1 compatible con OpenAI, igual que DeepSeek, Qwen o Kimi.
+    # Cambiar de proveedor es cambiar estas tres variables, sin tocar codigo.
+    llm_base_url: str = Field(
+        default="http://127.0.0.1:11434/v1",
+        description="Endpoint OpenAI-compatible de chat completions.",
+    )
+    llm_model: str = Field(
+        default="qwen2.5:3b",
+        description="Identificador del modelo de chat.",
+    )
+    llm_api_key: str = Field(
+        default="ollama",
+        description="API key del proveedor. Ollama la ignora; las APIs de pago no.",
+    )
+    llm_timeout_seconds: float = Field(
+        default=120.0,
+        gt=0,
+        description="Timeout por llamada al LLM. Generoso porque en CPU es lento.",
+    )
+    gemini_api_key: str | None = Field(
+        default=None,
+        description="Solo para el pipeline legacy (LEGACY_MODE=1). El backend no lo usa.",
     )
     canvas_api_base_url: str = Field(
         ...,
@@ -132,6 +153,17 @@ class Settings(BaseSettings):
     disable_rag_routes: bool = Field(
         default=False,
         description="When true, /query and other RAG routes return 503 (PR 6).",
+    )
+    dev_ui_enabled: bool = Field(
+        default=False,
+        description=(
+            "Monta /dev: la UI de prueba y un emisor de JWT sin login. "
+            "SOLO para desarrollo local; jamas en un despliegue real."
+        ),
+    )
+    dev_ui_user: str = Field(
+        default="joshua-tecsup",
+        description="backend_user_id que firma el JWT de la UI de prueba.",
     )
 
     @field_validator("tenant_token_key")

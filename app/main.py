@@ -135,6 +135,16 @@ def create_app() -> FastAPI:
     app.include_router(sync_router)
     app.include_router(health_router)
 
+    # UI de prueba: emite JWT sin login, asi que solo con la bandera puesta.
+    if get_settings().dev_ui_enabled:
+        from app.controllers.dev_ui import router as dev_router
+
+        app.include_router(dev_router)
+        get_logger("app.boot").warning(
+            "dev_ui_mounted",
+            detail="/dev emite JWT sin autenticacion; no usar en produccion",
+        )
+
     return app
 
 

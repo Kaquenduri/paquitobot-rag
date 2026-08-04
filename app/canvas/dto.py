@@ -178,7 +178,9 @@ class AssignmentDTO(CanvasDTO):
     grading_type: str | None = None
     submission_types: list[str] | None = None
     html_url: str | None = None
-    important_dates: dict[str, Any] | None = None
+    # Canvas devuelve un booleano ("¿esta tarea tiene fechas importantes?"),
+    # no un objeto. Se acepta el dict por compatibilidad con payloads viejos.
+    important_dates: bool | dict[str, Any] | None = None
     muted: bool | None = None
     availability_status: dict[str, Any] | None = None
     lock_info: dict[str, Any] | None = None

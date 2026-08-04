@@ -31,14 +31,22 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings, get_settings
+from app.core.db import get_db_session
 from app.core.deps import require_tenant_token
 from app.core.errors import new_correlation_id
 from app.core.logging import get_correlation_id, get_logger
 from app.observability.metrics import record_rag_request
+from app.rag.agente import Agente, Herramientas
+from app.rag.llm import llm_from_settings
+from app.rag.planner import planificar
 from app.rag.prompts import detect_language
 from app.services.rag_service import RAGService
+from app.text_to_sql.allow_list import ALLOW_LIST
+from app.text_to_sql.executor import execute_readonly
 
 logger = get_logger("app.controllers.query")
 
@@ -89,17 +97,64 @@ class QueryResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _executor_for(session: Session, settings: Settings):
+    """Build the ``(tenant_id, plan) -> rows`` callable used by the service.
+
+    The plan only ever names a template already in the allow-list, so the
+    SQL text is code-owned; the model never writes a query.
+    """
+
+    def ejecutar(*, tenant_id: Any, plan=None, sql: str | None = None) -> list[dict]:
+        if sql is None:
+            if plan is None:
+                return []
+            sql = ALLOW_LIST.resolve(plan.template, plan.slots)
+        extra = {
+            key: value
+            for key, value in (getattr(plan, "slots", {}) or {}).items()
+            if key != "tenant_id"
+        }
+        return execute_readonly(
+            session,
+            sql,
+            tenant_id=tenant_id,
+            row_limit=settings.sql_row_limit,
+            params=extra,
+        )
+
+    return ejecutar
+
+
 def get_rag_service(
     settings: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[Session, Depends(get_db_session)],
+    # El agente necesita el tenant para acotar sus herramientas. FastAPI
+    # cachea las dependencias por request, asi que esta es la MISMA
+    # resolucion que ya hizo la ruta; no se repite la cadena de auth.
+    tenant_context: Annotated[tuple[uuid.UUID, str], Depends(require_tenant_token)] = None,
 ) -> RAGService:
-    """Return a :class:`RAGService` built from the current settings.
+    """Return a :class:`RAGService` wired to the real planner, SQL executor
+    and chat model.
 
     Tests override this dependency to inject a stub RAG service that
     returns deterministic answers; the production path returns a
     fresh instance per request (the service itself is stateless).
     """
-    _ = settings  # placeholder for future wiring (e.g. provider URL)
-    return RAGService()
+    llm = llm_from_settings(settings)
+    agente = None
+    if tenant_context is not None:
+        tenant_id = tenant_context[0]
+        agente = Agente(
+            llm,
+            Herramientas(session, tenant_id, row_limit=settings.sql_row_limit),
+        )
+    return RAGService(
+        agente=agente,
+        planner=planificar,
+        session=session,
+        sql_executor=_executor_for(session, settings),
+        llm=llm,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +206,10 @@ async def post_query(
     rag_service.provider_health()
 
     try:
-        result = rag_service.answer(
+        # ``answer`` es sincrono (sesion SQLAlchemy sync + HTTP al LLM) y en
+        # CPU puede tardar decenas de segundos: fuera del event loop.
+        result = await run_in_threadpool(
+            rag_service.answer,
             payload.question,
             tenant_id=tenant_id,
             language=language,

@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="es" data-tema="claro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PaquitoBot</title>
+<script>
+  // Anti-parpadeo: aplica el tema guardado antes del primer pintado.
+  try {
+    const t = localStorage.getItem('paquito-tema');
+    if (t) document.documentElement.dataset.tema = t;
+  } catch (e) {}
+</script>
+<style>
+:root{
+  /* Paleta tomada del mockup: gris frio de fondo, blanco de tarjeta,
+     cian de accion y el casi-negro de la tarjeta urgente. */
+  --fondo:#eef3f8;
+  --superficie:#ffffff;
+  --superficie-2:#f7fafd;
+  --profundo:#0d1723;
+  --acento:#17a8e4;
+  --acento-hondo:#0b7fc4;
+  --tinta:#0f1b2a;
+  --tinta-suave:#6b7c93;
+  --linea:#e2e9f1;
+  /* Estado: separados del acento a proposito, para que "urgente" nunca
+     se confunda con "accion". */
+  --alerta:#e5484d;
+  --aviso:#f5a524;
+  --logro:#12a870;
+  --sombra:0 1px 2px rgba(15,27,42,.05), 0 12px 28px -18px rgba(15,27,42,.35);
+  --radio:22px;
+  --display:"Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,"Inter",sans-serif;
+  --cuerpo:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Inter",sans-serif;
+  --datos:ui-monospace,"Cascadia Mono","SF Mono",Menlo,monospace;
+}
+:root[data-tema="oscuro"]{
+  --fondo:#080d14;
+  --superficie:#111c28;
+  --superficie-2:#16222f;
+  --profundo:#000508;
+  --tinta:#eaf2fa;
+  --tinta-suave:#8598ad;
+  --linea:#1e2c3b;
+  --sombra:0 1px 2px rgba(0,0,0,.4), 0 14px 30px -18px rgba(0,0,0,.9);
+}
+*{box-sizing:border-box}
+html{ -webkit-text-size-adjust:100% }
+body{
+  margin:0; font-family:var(--cuerpo); background:var(--fondo); color:var(--tinta);
+  -webkit-font-smoothing:antialiased; min-height:100dvh;
+  /* Bloque, no flex: un item flex centrado puede inflarse por encima de su
+     max-width y desbordarse por ambos lados. Con margin auto no pasa. */
+  overflow-x:hidden;
+}
+button{font:inherit; color:inherit; cursor:pointer}
+:focus-visible{outline:2.5px solid var(--acento); outline-offset:2px; border-radius:6px}
+@media (prefers-reduced-motion:reduce){ *{animation:none!important; transition:none!important} }
+
+/* ---------- Carcasa tipo telefono ---------- */
+.telefono{
+  width:100%; max-width:430px; background:var(--fondo);
+  display:flex; flex-direction:column; position:relative;
+  min-height:100dvh; overflow:hidden; margin-inline:auto;
+}
+.vista,.hilo,.fichas,.desplazable,.cabecera,.riel,.lista{ min-width:0 }
+@media (min-width:900px){
+  body{ display:grid; place-items:center; background:
+    radial-gradient(1100px 700px at 20% -10%, color-mix(in srgb,var(--acento) 12%,transparent), transparent 60%),
+    var(--fondo); }
+  .telefono{ height:920px; min-height:0; border-radius:44px; box-shadow:0 40px 90px -30px rgba(13,23,35,.5);
+    border:1px solid var(--linea); }
+}
+
+/* ---------- Micro-etiqueta: el "eyebrow" del mockup ---------- */
+.micro{
+  font-size:10.5px; font-weight:700; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--acento);
+}
+.micro.tenue{ color:var(--tinta-suave) }
+
+/* ---------- Encabezado ---------- */
+.cabecera{
+  padding:22px 20px 12px; display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+}
+.saludo h1{
+  font-family:var(--display); font-size:29px; line-height:1.08; margin:4px 0 0;
+  letter-spacing:-.033em; font-weight:750;
+}
+.marca{ display:flex; align-items:center; gap:9px }
+.marca b{ font-family:var(--display); font-weight:780; letter-spacing:-.03em; font-size:17px }
+.marca b i{ color:var(--acento); font-style:normal }
+.avatar{
+  width:34px; height:34px; border-radius:11px; flex:none;
+  background:linear-gradient(150deg,var(--acento),var(--acento-hondo));
+  display:grid; place-items:center; color:#fff; font-size:17px;
+  box-shadow:0 6px 14px -6px var(--acento-hondo);
+}
+.btn-tema{
+  border:1px solid var(--linea); background:var(--superficie); width:38px; height:38px;
+  border-radius:12px; display:grid; place-items:center; font-size:15px; flex:none;
+}
+
+/* ---------- FIRMA: el riel del ciclo ----------
+   Tecsup organiza el ciclo por semanas (las tareas se llaman S12, S16).
+   Cada barra es una semana real; su alto son las entregas de esa semana.
+   Es el pulso del ciclo, no un grafico decorativo. */
+.riel{
+  margin:2px 20px 18px; padding:15px 16px 12px;
+  background:var(--superficie); border-radius:var(--radio); box-shadow:var(--sombra);
+  border:1px solid var(--linea);
+}
+.riel-cima{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:12px }
+.riel-cima b{ font-size:12.5px; font-weight:650; color:var(--tinta-suave) }
+.barras{ display:flex; align-items:flex-end; gap:3px; height:52px }
+.barra{
+  flex:1; min-width:3px; border-radius:3px 3px 2px 2px; position:relative;
+  background:color-mix(in srgb,var(--acento) 26%, transparent);
+  transform-origin:bottom; animation:crecer .5s cubic-bezier(.2,.8,.25,1) backwards;
+}
+.barra.viva{ background:linear-gradient(180deg,var(--acento),var(--acento-hondo)) }
+.barra.hoy{ background:var(--tinta) }
+.barra.hoy::after{
+  content:""; position:absolute; left:50%; translate:-50% 0; bottom:-9px;
+  width:4px; height:4px; border-radius:50%; background:var(--tinta);
+}
+@keyframes crecer{ from{ transform:scaleY(.04); opacity:.2 } }
+.riel-pie{ display:flex; justify-content:space-between; margin-top:14px; font-size:10.5px; color:var(--tinta-suave) }
+
+/* ---------- Tarjeta profunda ---------- */
+.profunda{
+  margin:0 20px 18px; padding:17px 18px; border-radius:var(--radio); color:#eef6fd;
+  background:linear-gradient(158deg,#152233,var(--profundo));
+  box-shadow:0 18px 34px -22px rgba(8,16,26,.9);
+}
+.profunda .micro{ color:#7fd4f7 }
+.profunda h3{ margin:9px 0 3px; font-family:var(--display); font-size:17.5px; letter-spacing:-.02em; font-weight:700 }
+.profunda p{ margin:0; font-size:12.5px; color:#93a9c0 }
+.chapa{
+  display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px;
+  background:rgba(229,72,77,.16); color:#ff9a9d; font-size:10.5px; font-weight:700;
+  letter-spacing:.05em; text-transform:uppercase;
+}
+
+/* ---------- Lista de cursos con nota vigesimal ---------- */
+.seccion{ padding:0 20px 8px; display:flex; align-items:baseline; justify-content:space-between }
+.lista{ padding:0 20px; display:flex; flex-direction:column; gap:9px }
+.curso{
+  background:var(--superficie); border:1px solid var(--linea); border-radius:16px;
+  padding:12px 14px; display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center;
+  box-shadow:var(--sombra); text-align:left; width:100%;
+  transition:transform .16s ease, border-color .16s ease;
+}
+.curso:hover{ transform:translateY(-1px); border-color:color-mix(in srgb,var(--acento) 45%,var(--linea)) }
+/* Sin min-width:0 la columna 1fr no baja de su ancho de contenido y el
+   nombre largo del curso empuja la nota fuera de la pantalla. */
+.curso>div:first-child{ min-width:0 }
+.curso h4{ margin:0 0 3px; font-size:13.5px; font-weight:650; letter-spacing:-.012em;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.curso small{ font-size:11px; color:var(--tinta-suave) }
+
+/* FIRMA 2: la nota siempre vigesimal, nunca porcentaje.
+   Canvas devuelve porcentajes ponderados que pasan de 100; aqui la
+   escala 0-20 es explicita y la referencia se ve. */
+.nota{ text-align:right; flex:none }
+.nota-valor{ font-family:var(--datos); font-size:19px; font-weight:700; letter-spacing:-.04em;
+  font-variant-numeric:tabular-nums; line-height:1 }
+.nota-sobre{ font-size:10.5px; color:var(--tinta-suave); font-family:var(--datos) }
+.escala{ display:flex; gap:1px; margin-top:5px; justify-content:flex-end }
+.tick{ width:2.5px; height:8px; border-radius:1px; background:var(--linea) }
+.tick.on{ background:var(--acento) }
+.tick.tope{ background:var(--logro) }
+.sin-nota{ font-size:11px; color:var(--tinta-suave) }
+
+/* ---------- Navegacion inferior ---------- */
+.barra-nav{
+  margin-top:auto; position:sticky; bottom:0; background:color-mix(in srgb,var(--superficie) 92%,transparent);
+  backdrop-filter:blur(14px); border-top:1px solid var(--linea);
+  display:flex; justify-content:space-around; align-items:center; padding:9px 8px calc(9px + env(safe-area-inset-bottom));
+}
+.nav-btn{
+  border:0; background:none; display:flex; flex-direction:column; align-items:center; gap:3px;
+  color:var(--tinta-suave); font-size:10px; font-weight:600; padding:4px 14px; border-radius:12px;
+}
+.nav-btn[aria-current="page"]{ color:var(--acento) }
+.nav-btn span:first-child{ font-size:17px; line-height:1 }
+
+/* ---------- Chat ---------- */
+.vista{ display:none; flex-direction:column; flex:1; min-height:0 }
+.vista.activa{ display:flex }
+.chat-cabecera{
+  display:flex; align-items:center; gap:11px; padding:16px 18px 13px;
+  border-bottom:1px solid var(--linea); background:var(--superficie);
+}
+.chat-cabecera .estado{ font-size:11px; color:var(--tinta-suave); display:flex; align-items:center; gap:5px }
+.punto{ width:6px; height:6px; border-radius:50%; background:var(--logro) }
+.punto.malo{ background:var(--alerta) }
+.hilo{ flex:1; overflow-y:auto; padding:16px 16px 6px; display:flex; flex-direction:column; gap:9px; scroll-behavior:smooth }
+.burbuja{
+  max-width:82%; padding:10px 13px; border-radius:17px; font-size:13.5px; line-height:1.48;
+  box-shadow:var(--sombra); animation:entra .26s cubic-bezier(.2,.8,.25,1) backwards; white-space:pre-wrap;
+}
+@keyframes entra{ from{ opacity:0; transform:translateY(7px) } }
+.de-bot{ background:var(--superficie); border:1px solid var(--linea); border-bottom-left-radius:6px; align-self:flex-start }
+.de-mi{
+  background:linear-gradient(150deg,var(--acento),var(--acento-hondo)); color:#fff;
+  border-bottom-right-radius:6px; align-self:flex-end; border:0;
+}
+.meta{ font-size:10px; color:var(--tinta-suave); margin:1px 4px 0; align-self:flex-start }
+.meta.mia{ align-self:flex-end }
+.pastilla{ display:inline-block; font-size:9.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+  padding:2px 7px; border-radius:999px; border:1px solid var(--linea); color:var(--tinta-suave) }
+.escribiendo{ display:flex; gap:4px; align-items:center }
+.escribiendo i{ width:6px; height:6px; border-radius:50%; background:var(--tinta-suave); animation:latir 1.1s infinite }
+.escribiendo i:nth-child(2){ animation-delay:.16s } .escribiendo i:nth-child(3){ animation-delay:.32s }
+@keyframes latir{ 0%,60%,100%{ opacity:.25; transform:translateY(0) } 30%{ opacity:1; transform:translateY(-3px) } }
+.fichas{ display:flex; gap:7px; padding:8px 16px 4px; overflow-x:auto; scrollbar-width:none }
+.fichas::-webkit-scrollbar{ display:none }
+.ficha{
+  flex:none; border:1px solid var(--linea); background:var(--superficie); color:var(--tinta);
+  padding:7px 13px; border-radius:999px; font-size:12px; font-weight:550; white-space:nowrap;
+  transition:border-color .15s ease, color .15s ease;
+}
+.ficha:hover{ border-color:var(--acento); color:var(--acento) }
+.redactar{ display:flex; gap:9px; padding:10px 16px calc(12px + env(safe-area-inset-bottom)); border-top:1px solid var(--linea);
+  background:var(--superficie) }
+.redactar input{
+  flex:1; border:1px solid var(--linea); background:var(--superficie-2); color:var(--tinta);
+  border-radius:999px; padding:11px 16px; font-size:13.5px; font-family:inherit;
+}
+.redactar input::placeholder{ color:var(--tinta-suave) }
+.enviar{
+  width:42px; height:42px; flex:none; border:0; border-radius:50%; color:#fff; font-size:16px;
+  background:linear-gradient(150deg,var(--acento),var(--acento-hondo));
+  box-shadow:0 8px 18px -8px var(--acento-hondo);
+}
+.enviar:disabled{ opacity:.45; cursor:not-allowed; box-shadow:none }
+
+/* ---------- Vacio y aviso ---------- */
+.vacio{ padding:34px 26px; text-align:center; color:var(--tinta-suave); font-size:13px; line-height:1.6 }
+.aviso-dev{
+  margin:0 20px 14px; padding:9px 12px; border-radius:12px; font-size:11px; line-height:1.5;
+  background:color-mix(in srgb,var(--aviso) 13%,transparent);
+  border:1px solid color-mix(in srgb,var(--aviso) 34%,transparent); color:var(--tinta);
+}
+.desplazable{ flex:1; overflow-y:auto; padding-bottom:14px }
+</style>
+</head>
+<body>
+<div class="telefono">
+
+  <!-- ============ INICIO ============ -->
+  <section class="vista activa" id="v-inicio">
+    <header class="cabecera">
+      <div class="saludo">
+        <p class="micro" id="hoy-etiqueta">Cargando</p>
+        <h1 id="saludo">Hola</h1>
+      </div>
+      <button class="btn-tema" id="btn-tema" aria-label="Cambiar tema">◐</button>
+    </header>
+
+    <div class="desplazable">
+      <div class="aviso-dev">
+        Modo de prueba local. La sesión se emite sin login y los datos vienen
+        de tu Canvas de Tecsup ya sincronizado.
+      </div>
+
+      <!-- Componente firma: el pulso del ciclo, semana por semana -->
+      <div class="riel">
+        <div class="riel-cima">
+          <p class="micro tenue">Pulso del ciclo</p>
+          <b id="riel-total">—</b>
+        </div>
+        <div class="barras" id="barras"></div>
+        <div class="riel-pie"><span id="riel-desde">—</span><span id="riel-hasta">—</span></div>
+      </div>
+
+      <article class="profunda" id="tarjeta-urgente">
+        <span class="chapa" id="urgente-chapa">Sin pendientes</span>
+        <h3 id="urgente-titulo">Nada por vencer</h3>
+        <p id="urgente-detalle">Cargando tu Canvas…</p>
+      </article>
+
+      <div class="seccion">
+        <p class="micro tenue">Tus cursos</p>
+        <span class="micro tenue" id="cursos-conteo"></span>
+      </div>
+      <div class="lista" id="lista-cursos"></div>
+    </div>
+  </section>
+
+  <!-- ============ CHAT ============ -->
+  <section class="vista" id="v-chat">
+    <header class="chat-cabecera">
+      <div class="avatar">🤖</div>
+      <div style="flex:1">
+        <div class="marca"><b>Paquito<i>Bot</i></b></div>
+        <div class="estado"><span class="punto" id="punto-estado"></span><span id="txt-estado">Listo</span></div>
+      </div>
+      <button class="btn-tema" id="btn-tema-2" aria-label="Cambiar tema">◐</button>
+    </header>
+
+    <div class="hilo" id="hilo"></div>
+
+    <div class="fichas" id="fichas"></div>
+
+    <form class="redactar" id="form">
+      <input id="entrada" placeholder="Pregúntale a Paquito…" autocomplete="off"
+             aria-label="Escribe tu pregunta">
+      <button class="enviar" id="btn-enviar" type="submit" aria-label="Enviar">➤</button>
+    </form>
+  </section>
+
+  <!-- ============ NAV ============ -->
+  <nav class="barra-nav">
+    <button class="nav-btn" data-vista="v-inicio" aria-current="page"><span>◧</span><span>Inicio</span></button>
+    <button class="nav-btn" data-vista="v-chat"><span>◉</span><span>Paquito</span></button>
+  </nav>
+</div>
+
+<script>
+const API = '';
+let TOKEN = null;
+
+const $ = (s) => document.querySelector(s);
+const fmt = (iso) => {
+  const d = new Date(iso);
+  return d.toLocaleDateString('es-PE', {day:'2-digit', month:'short'});
+};
+
+/* ---------- Tema ---------- */
+function alternarTema(){
+  const raiz = document.documentElement;
+  const nuevo = raiz.dataset.tema === 'oscuro' ? 'claro' : 'oscuro';
+  raiz.dataset.tema = nuevo;
+  try { localStorage.setItem('paquito-tema', nuevo); } catch(e){}
+}
+$('#btn-tema').onclick = alternarTema;
+$('#btn-tema-2').onclick = alternarTema;
+
+/* ---------- Navegación ---------- */
+function irA(vista, foco = true){
+  document.querySelectorAll('.vista').forEach(v => v.classList.remove('activa'));
+  $('#' + vista).classList.add('activa');
+  document.querySelectorAll('.nav-btn').forEach(x => {
+    x.toggleAttribute('aria-current', x.dataset.vista === vista);
+    if (x.dataset.vista === vista) x.setAttribute('aria-current', 'page');
+  });
+  if (vista === 'v-chat' && foco) $('#entrada').focus();
+}
+document.querySelectorAll('.nav-btn').forEach(b => {
+  b.onclick = () => irA(b.dataset.vista);
+});
+
+/* ---------- Sesión ---------- */
+async function sesion(){
+  const r = await fetch(API + '/dev/session', {method:'POST'});
+  const j = await r.json();
+  TOKEN = j.token;
+  return j.user;
+}
+
+/* ---------- Inicio ---------- */
+function pintarRiel(semanas){
+  const caja = $('#barras');
+  caja.innerHTML = '';
+  if (!semanas.length){ $('#riel-total').textContent = 'sin datos'; return; }
+  const tope = Math.max(...semanas.map(s => s.tareas));
+  const ahora = Date.now();
+  let proximaIdx = -1;
+  semanas.forEach((s, i) => {
+    if (proximaIdx < 0 && new Date(s.semana).getTime() >= ahora) proximaIdx = i;
+  });
+  semanas.forEach((s, i) => {
+    const b = document.createElement('div');
+    b.className = 'barra' + (s.con_nota > 0 ? ' viva' : '') + (i === proximaIdx ? ' hoy' : '');
+    b.style.height = Math.max(8, (s.tareas / tope) * 100) + '%';
+    b.style.animationDelay = (i * 14) + 'ms';
+    b.title = `${fmt(s.semana)}: ${s.tareas} entrega(s)`;
+    caja.appendChild(b);
+  });
+  const total = semanas.reduce((a, s) => a + s.tareas, 0);
+  $('#riel-total').textContent = total + ' entregas en ' + semanas.length + ' semanas';
+  $('#riel-desde').textContent = fmt(semanas[0].semana);
+  $('#riel-hasta').textContent = fmt(semanas[semanas.length - 1].semana);
+}
+
+function escala(nota){
+  // 20 marcas: la escala vigesimal se ve, no se infiere.
+  let h = '<div class="escala">';
+  for (let i = 1; i <= 20; i++){
+    const on = i <= Math.round(nota);
+    h += `<i class="tick${on ? (i >= 18 ? ' tope' : ' on') : ''}"></i>`;
+  }
+  return h + '</div>';
+}
+
+function pintarCursos(cursos){
+  const caja = $('#lista-cursos');
+  caja.innerHTML = '';
+  const conNota = cursos.filter(c => c.promedio !== null);
+  $('#cursos-conteo').textContent = cursos.length + ' cursos';
+  cursos.forEach(c => {
+    const el = document.createElement('button');
+    el.className = 'curso';
+    const nombre = (c.name || '').split(' - ')[0];
+    const nota = c.promedio === null ? null : Number(c.promedio);
+    const plural = (n, s, p) => `${n} ${n === 1 ? s : p}`;
+    el.innerHTML = `
+      <div>
+        <h4>${nombre}</h4>
+        <small>${plural(c.tareas,'tarea','tareas')} · ${plural(c.evaluadas,'evaluada','evaluadas')}</small>
+      </div>
+      <div class="nota">
+        ${nota === null
+          ? '<span class="sin-nota">sin notas</span>'
+          : `<div class="nota-valor">${nota.toFixed(1)}<span class="nota-sobre">/20</span></div>${escala(nota)}`}
+      </div>`;
+    el.onclick = () => {
+      irA('v-chat', false);
+      preguntar(`¿Cómo voy en ${nombre.toLowerCase()}?`);
+    };
+    caja.appendChild(el);
+  });
+}
+
+function pintarUrgente(recientes){
+  if (!recientes.length) return;
+  const ahora = Date.now();
+  const futuras = recientes.filter(r => new Date(r.due_at).getTime() > ahora);
+  const t = $('#tarjeta-urgente');
+  if (futuras.length){
+    const r = futuras[futuras.length - 1];
+    const horas = Math.round((new Date(r.due_at) - ahora) / 36e5);
+    $('#urgente-chapa').textContent = horas < 48 ? `vence en ${horas} h` : `vence el ${fmt(r.due_at)}`;
+    $('#urgente-titulo').textContent = r.name;
+    $('#urgente-detalle').textContent = `${(r.curso || '').split(' - ')[0]} · vale ${r.points_possible} puntos`;
+  } else {
+    const r = recientes[0];
+    $('#urgente-chapa').textContent = 'ciclo cerrado';
+    $('#urgente-chapa').style.background = 'rgba(18,168,112,.16)';
+    $('#urgente-chapa').style.color = '#6ee7b7';
+    $('#urgente-titulo').textContent = 'No tienes nada por vencer';
+    $('#urgente-detalle').textContent = `Tu última entrega fue ${r.name.slice(0,46)} el ${fmt(r.due_at)}.`;
+  }
+}
+
+async function cargarInicio(usuario){
+  const r = await fetch(API + '/dev/resumen');
+  const d = await r.json();
+  const nombre = (usuario || 'estudiante').split('-')[0];
+  $('#saludo').textContent = 'Hola, ' + nombre.charAt(0).toUpperCase() + nombre.slice(1);
+  $('#hoy-etiqueta').textContent = new Date().toLocaleDateString('es-PE',
+    {weekday:'long', day:'numeric', month:'long'});
+  pintarRiel(d.semanas || []);
+  pintarCursos(d.cursos || []);
+  pintarUrgente(d.recientes || []);
+  return d;
+}
+
+/* ---------- Chat ---------- */
+function burbuja(texto, mia, etiqueta){
+  const hilo = $('#hilo');
+  const b = document.createElement('div');
+  b.className = 'burbuja ' + (mia ? 'de-mi' : 'de-bot');
+  b.textContent = texto;
+  hilo.appendChild(b);
+  if (etiqueta){
+    const m = document.createElement('div');
+    m.className = 'meta' + (mia ? ' mia' : '');
+    m.innerHTML = etiqueta;
+    hilo.appendChild(m);
+  }
+  hilo.scrollTop = hilo.scrollHeight;
+  return b;
+}
+
+function pensando(){
+  const hilo = $('#hilo');
+  const b = document.createElement('div');
+  b.className = 'burbuja de-bot escribiendo';
+  b.innerHTML = '<i></i><i></i><i></i>';
+  hilo.appendChild(b);
+  hilo.scrollTop = hilo.scrollHeight;
+  return b;
+}
+
+async function preguntar(texto){
+  burbuja(texto, true);
+  const espera = pensando();
+  const t0 = performance.now();
+  $('#btn-enviar').disabled = true;
+  try {
+    const r = await fetch(API + '/query', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer ' + TOKEN},
+      body: JSON.stringify({question: texto})
+    });
+    const seg = ((performance.now() - t0) / 1000).toFixed(1);
+    espera.remove();
+    if (!r.ok){
+      const err = await r.text();
+      burbuja('No pude responder eso. El servidor devolvió ' + r.status + '.', false,
+              `<span class="pastilla">error</span> ${err.slice(0,90)}`);
+      return;
+    }
+    const j = await r.json();
+    burbuja(j.answer, false,
+      `<span class="pastilla">${j.route}</span> ${seg}s · ${j.correlation_id.slice(0,8)}`);
+  } catch (e) {
+    espera.remove();
+    burbuja('No pude conectarme al backend. ¿Sigue corriendo en el puerto 8000?', false);
+  } finally {
+    $('#btn-enviar').disabled = false;
+  }
+}
+
+$('#form').onsubmit = (e) => {
+  e.preventDefault();
+  const t = $('#entrada').value.trim();
+  if (!t) return;
+  $('#entrada').value = '';
+  preguntar(t);
+};
+
+const SUGERENCIAS = [
+  '¿Qué venció en julio?',
+  '¿Cómo voy en aplicaciones móviles?',
+  '¿Cuál es mi promedio en desarrollo web?',
+  '¿Cuántas tareas tiene el curso de la nube?',
+  '¿Qué entrego esta semana?'
+];
+SUGERENCIAS.forEach(s => {
+  const b = document.createElement('button');
+  b.className = 'ficha'; b.type = 'button'; b.textContent = s;
+  b.onclick = () => preguntar(s);
+  $('#fichas').appendChild(b);
+});
+
+/* ---------- Arranque ---------- */
+(async () => {
+  try {
+    const usuario = await sesion();
+    const d = await cargarInicio(usuario);
+    const n = (d.cursos || []).length;
+    burbuja(
+      `Hola. Ya revisé tu Canvas: tengo ${n} cursos sincronizados y ` +
+      `${(d.semanas||[]).reduce((a,s)=>a+s.tareas,0)} entregas registradas.\n\n` +
+      `Pregúntame por tus notas, tu promedio en un curso, o qué venció en un mes.`,
+      false, '<span class="pastilla">sincronizado</span>'
+    );
+
+    // Atajos de prueba: /dev/#chat abre el chat, ?q=... manda la pregunta.
+    const params = new URLSearchParams(location.search);
+    const q = params.get('q');
+    if (location.hash === '#chat' || q) irA('v-chat', false);
+    if (q) preguntar(q);
+  } catch (e) {
+    $('#txt-estado').textContent = 'Backend no disponible';
+    $('#punto-estado').classList.add('malo');
+    burbuja('No pude cargar tu sesión. Revisa que el backend esté corriendo.', false);
+  }
+
+  // Salud del proveedor de IA, para saber si va a poder redactar.
+  try {
+    const h = await (await fetch(API + '/healthz')).json();
+    if (h.status !== 'healthy'){
+      $('#txt-estado').textContent = 'modo degradado · db ' + (h.db.available ? 'ok' : 'caída');
+    }
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>

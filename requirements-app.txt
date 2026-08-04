@@ -1,0 +1,45 @@
+# Dependencias del backend (app/). Este es el archivo verificado: con
+# estas versiones exactas se levanto el servidor, se sincronizo Canvas y
+# respondio /query end-to-end en Windows 11 + Python 3.13.
+#
+# requirements.txt (el completo) incluye ademas chromadb, onnxruntime y
+# el stack de langchain que solo usa el pipeline legacy de src/
+# (LEGACY_MODE=1). Esos son los paquetes pesados que suelen fallar al
+# compilar en Windows; si solo vas a correr el backend, no los necesitas.
+
+# --- Web ---
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+
+# --- Base de datos ---
+SQLAlchemy==2.0.36
+alembic==1.13.3
+psycopg[binary]==3.3.4
+# alembic/env.py usa un engine asincrono; sin greenlet falla al migrar.
+greenlet==3.1.1
+
+# --- Configuracion y validacion ---
+pydantic==2.10.2
+pydantic-settings==2.14.2
+python-dotenv==1.0.1
+
+# --- Seguridad ---
+PyJWT==2.10.1
+cryptography==43.0.3
+
+# --- Canvas, sync y observabilidad ---
+httpx==0.28.0
+APScheduler==3.10.4
+bleach==6.2.0
+structlog==24.4.0
+tenacity==9.0.0
+prometheus_client==0.21.0
+langchain-core==0.3.21
+
+# --- SQL seguro ---
+sqlglot==26.0.0
+sqlparse==0.5.5
+
+# --- Tests ---
+pytest==9.1.1
+pytest-asyncio==1.4.0
