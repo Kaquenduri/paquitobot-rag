@@ -18,6 +18,7 @@ El modelo elige QUE preguntar; el SQL sigue siendo codigo nuestro.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -117,9 +118,18 @@ HERRAMIENTAS: list[dict[str, Any]] = [
 SISTEMA = """Eres PaquitoBot, asistente de estudiantes de Tecsup, Peru.
 
 REGLAS (obligatorias):
-1. La lista de cursos con su NUMERO ya esta abajo. No la pidas otra vez.
-2. Para responder sobre notas, LLAMA UNA HERRAMIENTA con ese numero.
-   Nunca respondas de memoria.
+1. Abajo ya tienes la lista de cursos con su NUMERO y su PROMEDIO. No
+   la pidas otra vez.
+2. Si la pregunta es del tipo "como voy en X" o "cual es mi promedio de
+   X", el promedio YA ESTA abajo: responde directo, SIN herramientas.
+   Solo usa herramientas para lo que no esta abajo (una semana, una
+   tarea puntual, fechas de vencimiento).
+3. Si el alumno escribe mal el nombre del curso, eliges el mas parecido
+   y lo nombras en tu respuesta ("En Programacion en Moviles Avanzado
+   vas..."). Si DOS cursos calzan casi igual, NO adivines: preguntale
+   cual, nombrando los dos. Ejemplo: "Tienes dos de moviles:
+   Aplicaciones Moviles Multiplataforma y Programacion en Moviles
+   Avanzado. ¿Cual?"
 3. PROHIBIDO pedirle datos al alumno. Sus notas las sacas tu de las
    herramientas. El no tiene que decirte nada.
 4. PROHIBIDO inventar. Si la herramienta devuelve vacio, dices exacto:
@@ -172,6 +182,21 @@ def _consultar(session: Any, tenant_id: Any, plantilla: str, slots: dict, limite
         )
     finally:
         session.rollback()
+
+
+_SUFIJO_SECCION = re.compile(r"\s+-\s+C\d{2}\b.*$", re.IGNORECASE)
+
+
+def nombre_corto(nombre: str) -> str:
+    """Quita el sufijo de seccion de Tecsup.
+
+    "Programacion en Moviles Avanzado - C24 5to F-A - C24 5to E-A-A"
+    se vuelve "Programacion en Moviles Avanzado". Ese sufijo es igual en
+    casi todos los cursos: no distingue nada, cuesta tokens en cada
+    vuelta al modelo (que en CPU es tiempo real) y ensucia la respuesta
+    que lee el alumno.
+    """
+    return _SUFIJO_SECCION.sub("", nombre or "").strip()
 
 
 def _limpiar(filas: list[dict]) -> list[dict]:
@@ -235,7 +260,7 @@ class Herramientas:
         return [
             {
                 "curso": i + 1,
-                "nombre": c["name"],
+                "nombre": nombre_corto(c["name"]),
                 "promedio": float(c["promedio"]) if c["promedio"] is not None else None,
                 "evaluadas": c["evaluadas"],
                 "tareas": c["tareas"],
@@ -244,7 +269,7 @@ class Herramientas:
         ]
 
     def _nombre_de(self, numero: Any) -> str:
-        return str(self.cursos()[int(numero) - 1]["name"])
+        return nombre_corto(str(self.cursos()[int(numero) - 1]["name"]))
 
     def notas_del_curso(self, curso: Any) -> Any:
         uuid_curso = self._uuid_de(curso)
@@ -331,10 +356,10 @@ def panorama(herramientas: Herramientas, ahora: datetime | None = None) -> str:
     except Exception:  # noqa: BLE001 - el panorama nunca debe tumbar la respuesta
         return lineas[0]
 
-    lineas.append(f"El alumno lleva {len(cursos)} cursos:")
+    lineas.append("Cursos del alumno (numero, nombre, promedio, evaluaciones):")
     for c in cursos:
         prom = f"{c['promedio']:.1f}/20" if c["promedio"] is not None else "sin notas"
-        lineas.append(f"  {c['curso']}. {c['nombre'][:52]} — {prom} ({c['evaluadas']} evaluadas)")
+        lineas.append(f"  {c['curso']}. {c['nombre']} — {prom}, {c['evaluadas']} evaluadas")
 
     try:
         proximas = herramientas.tareas_entre_fechas(

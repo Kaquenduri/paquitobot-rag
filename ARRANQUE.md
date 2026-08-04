@@ -123,8 +123,15 @@ Debe decir `Running upgrade -> 0001_init`.
 ## 5. La IA
 
 ```powershell
+$env:OLLAMA_KEEP_ALIVE = "60m"
 ollama serve
 ```
+
+**No te saltes el `OLLAMA_KEEP_ALIVE`.** Sin eso Ollama descarga el modelo
+de RAM entre pregunta y pregunta, y cada llamada vuelve a leer gigas del
+disco. Medido en la misma máquina: **30 segundos en frío contra 2 segundos
+en caliente**. El agente hace 2 o 3 llamadas por pregunta, así que la
+diferencia se multiplica.
 
 Déjalo abierto en su propia terminal. En **otra** terminal:
 
@@ -200,18 +207,27 @@ Pregúntale cosas como:
 
 ## Qué esperar (no es un bug)
 
-**Cada respuesta tarda entre 45 segundos y 2 minutos.** El agente hace 2 o
-3 pasadas completas por el modelo, y en CPU sin GPU dedicada eso es lo que
-cuesta. La pantalla muestra los tres puntitos mientras piensa.
+Números medidos en una laptop **i7-1255U, 24 GB RAM, sin GPU dedicada**,
+con el modelo ya cargado en RAM:
 
-**El modelo de 3B se equivoca a veces de curso**, sobre todo cuando hay que
-dar un salto de idioma (le dices "cloud" y el curso se llama "Nube"). Está
-diseñado para que cuando pase, la respuesta **nombre el curso que realmente
-consultó** — así el error se ve en vez de pasar colado. Si la respuesta
-menciona un curso que no es el que preguntaste, es eso.
+| Modelo | Tiempo por pregunta | Calidad |
+|---|---|---|
+| `qwen2.5:3b` | ~55 s | Acierta lo directo. Se confunde de curso y a veces mezcla el formato de los ejemplos. |
+| `qwen2.5:7b` | ~120 s | Mejor criterio, pero ocupa 5 GB y llegó a tumbar Docker por presión de memoria. |
 
-Las dos limitaciones se arreglan igual: con un modelo mejor. La
-arquitectura no cambia, solo `LLM_BASE_URL`, `LLM_MODEL` y `LLM_API_KEY`.
+**Esto es el techo del hardware, no del código.** Sin GPU, el modelo genera
+palabra por palabra usando el procesador, y el agente hace 2 o 3 pasadas
+por pregunta. No hay prompt que arregle eso.
+
+El modelo local sirve para **ver el mecanismo funcionando** y para
+desarrollar sin gastar. Para que las respuestas sean rápidas y confiables
+hace falta un modelo servido por API. El código ya está listo: son tres
+líneas del `.env` (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`), sin tocar
+una línea de Python.
+
+**Cuando el modelo local se equivoca de curso**, la respuesta nombra el
+curso que realmente consultó. Es a propósito: un error visible se detecta,
+uno silencioso te hace tomar decisiones con datos falsos.
 
 ---
 
