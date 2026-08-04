@@ -178,7 +178,7 @@ class AssignmentDTO(CanvasDTO):
     grading_type: str | None = None
     submission_types: list[str] | None = None
     html_url: str | None = None
-    important_dates: dict[str, Any] | None = None
+    important_dates: Any | None = None
     muted: bool | None = None
     availability_status: dict[str, Any] | None = None
     lock_info: dict[str, Any] | None = None
@@ -339,7 +339,29 @@ def _selftest() -> None:
     )
     assert isinstance(cleaned, dict)
     assert "body" not in cleaned["submission"]
+    # Canvas regression: when an assignment has no important dates the
+    # ``important_dates`` field is the boolean ``False`` rather than a dict.
+    # The DTO must accept either shape so the sync does not abort with
+    # ``schema_drift``.
+    parsed = AssignmentDTO.model_validate(
+        {
+            "id": 42,
+            "course_id": 6669,
+            "name": "quiz without important dates",
+            "important_dates": False,
+        }
+    )
+    assert parsed.important_dates is False
+    parsed_dict = AssignmentDTO.model_validate(
+        {
+            "id": 43,
+            "course_id": 6669,
+            "name": "assignment with important dates",
+            "important_dates": {"id": 7, "start_at": "2026-08-01T00:00:00Z"},
+        }
+    )
+    assert isinstance(parsed_dict.important_dates, dict)
 
 
-if __name__ == "__main__":  # pragma: no cover - manual executable assertion
+if __name__ == "__main__":
     _selftest()
