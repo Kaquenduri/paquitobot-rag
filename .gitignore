@@ -1,5 +1,8 @@
 .env
 .env.*
+# La plantilla SI se versiona: no lleva secretos, solo los nombres de las
+# variables y los valores por defecto.
+!.env.example
 *.pyc
 __pycache__/
 .pytest_cache/
