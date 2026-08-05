@@ -44,11 +44,40 @@ def normalizar(texto: str) -> str:
     return sin_tildes.lower()
 
 
+# Los alumnos nombran los cursos en el idioma de la tecnologia, no como
+# figuran en Canvas: dicen "cloud" y el curso se llama "Nube". No es una
+# falta de ortografia (que el comparador de prefijos ya cubre), es una
+# traduccion, y ninguna comparacion de letras la resuelve.
+SINONIMOS = {
+    "cloud": "nube",
+    "aws": "nube",
+    "azure": "nube",
+    "mobile": "moviles",
+    "movil": "moviles",
+    "android": "moviles",
+    "ios": "moviles",
+    "swift": "moviles",
+    "flutter": "moviles",
+    "backend": "web",
+    "frontend": "web",
+    "node": "web",
+    "database": "datos",
+    "bd": "datos",
+    "sql": "datos",
+    "innovacion": "innovacion",
+    "marketing": "marketing",
+    "tutoria": "tutoria",
+    "ingles": "ingles",
+}
+
+
 def _palabras(texto: str) -> set[str]:
+    # Los numeros cortos se conservan: "Tutoria 5" y "Tutoria 2" se
+    # distinguen SOLO por el numero, y descartarlo las volvia idénticas.
     return {
         palabra
         for palabra in re.findall(r"[a-z0-9]+", normalizar(texto))
-        if len(palabra) > 2 and palabra not in RUIDO
+        if (len(palabra) > 2 or palabra.isdigit()) and palabra not in RUIDO
     }
 
 
@@ -90,6 +119,8 @@ def resolver_curso(
     no responder a responder sobre el curso equivocado.
     """
     tokens = _palabras(pregunta)
+    # Expandimos con la traduccion, sin quitar el original.
+    tokens |= {SINONIMOS[t] for t in tokens if t in SINONIMOS}
     if not tokens:
         return None
 

@@ -120,10 +120,12 @@ SISTEMA = """Eres PaquitoBot, asistente de estudiantes de Tecsup, Peru.
 REGLAS (obligatorias):
 1. Abajo ya tienes la lista de cursos con su NUMERO y su PROMEDIO. No
    la pidas otra vez.
-2. Si la pregunta es del tipo "como voy en X" o "cual es mi promedio de
-   X", el promedio YA ESTA abajo: responde directo, SIN herramientas.
-   Solo usa herramientas para lo que no esta abajo (una semana, una
-   tarea puntual, fechas de vencimiento).
+2. Si abajo aparece "DATOS DEL CURSO QUE MENCIONA", ESO es el curso del
+   que te hablan y esos son sus datos exactos. Responde con eso, SIN
+   herramientas, y no lo contradigas. Si dice "Promedio 15.50/20 sobre 2
+   evaluaciones", el alumno TIENE notas: nunca digas que no tiene.
+   Usa herramientas solo para lo que no este ahi (fechas de vencimiento
+   de otros cursos, comparaciones).
 3. Si el alumno escribe mal el nombre del curso, eliges el mas parecido
    y lo nombras en tu respuesta ("En Programacion en Moviles Avanzado
    vas..."). Si DOS cursos calzan casi igual, NO adivines: preguntale
@@ -144,10 +146,14 @@ REGLAS (obligatorias):
    herramientas se ejecutan, no se narran. El alumno jamas debe leer
    "notas_por_tarea" ni "curso=3" ni parentesis con parametros.
 
+9. No menciones una semana salvo que el alumno la haya nombrado. Si te
+   pregunta "en que semanas tengo notas", listas las tareas que ves con
+   su nota, sin inventar numeros de semana.
+
 COMO SE VE UNA BUENA RESPUESTA (solo el texto final, nada mas):
-"En la semana 2 sacaste 20 de 20 en el Lab 02."
 "Vas en 18.4 de 20 con 17 evaluaciones calificadas."
-"No tienes nota registrada en la semana 7 de ese curso."
+"Sacaste 16 de 20 en la campaña de valores y 15 en la segunda tarea."
+"Ese curso todavia no tiene ninguna nota registrada."
 
 SITUACION ACTUAL
 {panorama}
@@ -386,9 +392,64 @@ class Agente:
         self.llm = llm
         self.herramientas = herramientas
 
+    def _prefetch(self, pregunta: str) -> str:
+        """Resuelve el curso mencionado y precarga SUS datos en el prompt.
+
+        Elegir a que curso se refiere el alumno es una busqueda exacta, y
+        eso lo hace mejor el codigo que un modelo chico: se vio a
+        qwen2.5:3b confundir "Tutoria 5" con "Tutoria 2" y afirmar que un
+        curso con notas no tenia ninguna.
+
+        Esto NO le quita criterio al modelo: el sigue interpretando que
+        le preguntan y redactando la respuesta, y sigue teniendo las
+        herramientas para lo que no venga precargado. Solo le quitamos la
+        parte donde falla y donde la exactitud no es opinable.
+        """
+        from app.rag.planner import RE_ITEM, resolver_curso
+
+        try:
+            cursos = self.herramientas.cursos()
+        except Exception:  # noqa: BLE001
+            return ""
+        curso = resolver_curso(pregunta, cursos)
+        if curso is None:
+            return ""
+
+        numero = cursos.index(curso) + 1
+        partes = [f"\nDATOS DEL CURSO QUE MENCIONA ({nombre_corto(curso['name'])}):"]
+        try:
+            stats = self.herramientas.notas_del_curso(numero)["datos"]
+            if stats and stats[0].get("average_score") is not None:
+                s = stats[0]
+                partes.append(
+                    f"  Promedio {float(s['average_score']):.2f}/20 sobre "
+                    f"{s['scored_count']} evaluaciones "
+                    f"(minima {s['minimum_score']}, maxima {s['maximum_score']})."
+                )
+            else:
+                partes.append("  Todavia no tiene ninguna nota registrada.")
+
+            item = RE_ITEM.search(pregunta.lower())
+            filtro = f"S{int(item.group(1) or item.group(2)):02d}" if item else ""
+            tareas = self.herramientas.notas_por_tarea(numero, filtro)["datos"]
+            if filtro:
+                partes.append(f"  Tareas de la semana {filtro[1:]}:")
+            else:
+                partes.append("  Sus tareas con nota:")
+            if not tareas:
+                partes.append("    (ninguna)")
+            for t in tareas[:14]:
+                partes.append(
+                    f"    {str(t['name'])[:60]} — {t['score']}/{t['points_possible']}"
+                )
+        except Exception:  # noqa: BLE001 - el prefetch nunca tumba la respuesta
+            return ""
+        return "\n".join(partes)
+
     def responder(self, pregunta: str, *, historial: list[dict] | None = None) -> Respuesta:
+        contexto = panorama(self.herramientas) + self._prefetch(pregunta)
         mensajes: list[dict[str, Any]] = [
-            {"role": "system", "content": SISTEMA.format(panorama=panorama(self.herramientas))}
+            {"role": "system", "content": SISTEMA.format(panorama=contexto)}
         ]
         mensajes.extend(historial or [])
         mensajes.append({"role": "user", "content": pregunta})
