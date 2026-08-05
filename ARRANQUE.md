@@ -78,8 +78,14 @@ Primero genera tus propios secretos:
 .\.venv\Scripts\python.exe -c "from cryptography.fernet import Fernet; import secrets; print('TENANT_TOKEN_KEY=' + Fernet.generate_key().decode()); print('BACKEND_SECRET=' + secrets.token_urlsafe(48))"
 ```
 
-Crea un archivo `.env` en la raíz del proyecto con esto, pegando los dos
-valores que te imprimió el comando anterior:
+Copia la plantilla y pégale los dos valores que te imprimió el comando:
+
+```powershell
+copy .env.example .env
+```
+
+Debe quedar así (`TENANT_TOKEN_KEY` y `BACKEND_SECRET` son los tuyos, y
+`DEV_UI_ENABLED` en `true` para poder abrir la pantalla de prueba):
 
 ```ini
 SUPABASE_DATABASE_URL=postgresql+psycopg://paquito:paquito@127.0.0.1:5433/paquito
@@ -202,6 +208,46 @@ Pregúntale cosas como:
 - `como voy en <curso>`
 - `que venció en junio`
 - `todas mis notas de <curso>`
+
+---
+
+## Volver a arrancarlo otro día
+
+Los pasos de arriba son para la primera vez. Después son **3 terminales**,
+en este orden, y se dejan abiertas:
+
+**1 — la IA**
+
+```powershell
+$env:OLLAMA_KEEP_ALIVE = "60m"
+ollama serve
+```
+
+**2 — la base de datos**
+
+```powershell
+docker start paquito-pg
+```
+
+Si Docker Desktop está cerrado, ábrelo primero y espera a que el ícono de
+la ballena deje de moverse.
+
+**3 — el backend**
+
+```powershell
+cd <ruta-del-proyecto>
+$env:DEV_UI_ENABLED = "true"
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Y abres http://127.0.0.1:8000/dev/
+
+Los datos de Canvas quedan guardados en Postgres, así que **no hay que
+volver a sincronizar** salvo que quieras traer novedades. Para eso, repite
+el paso 7.
+
+Para dejar todo apagado: Ctrl-C en las dos terminales y `docker stop
+paquito-pg`.
 
 ---
 
