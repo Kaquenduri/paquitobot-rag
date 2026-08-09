@@ -130,3 +130,4 @@ websockets==14.1
 wrapt==1.17.0
 yarl==1.18.3
 zipp==3.21.0
+psycopg[binary]
