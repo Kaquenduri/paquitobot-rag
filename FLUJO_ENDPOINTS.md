@@ -114,13 +114,15 @@ verify_backend_jwt_dependency  →  require_tenant  →  require_tenant_token
 
 **Por qué `disable_rag_routes` feature flag**: en operaciones de mantenimiento (ej. reindexar embeddings), el operador quiere desactivar `/query` sin redesplegar. El endpoint devuelve 503 en lugar de colgar.
 
-**Por qué `detect_language` heurística y no LLM**: la detección es rápida y determinística. Una palabra como "qué" o "promedio" marca español; sin esas marcas, inglés. No justifica gastar tokens de Gemini.
+**Por qué `detect_language` heurística y no LLM**: sigue siendo regex rápido y determinístico, pero sólo alimenta el campo `lang` de la respuesta, las métricas y el `bounded_refusal` (cuando no hay LLM disponible). El texto de la respuesta real YA NO depende de este regex: el prompt que recibe Gemini incluye la pregunta textual del usuario y le pide detectar el idioma y responder en el mismo, dentro de la misma llamada que genera la respuesta (sin tokens extra). Esto corrige el caso en que el regex fallaba (ej. "que" sin tilde) y la respuesta salía en el idioma equivocado.
 
 **Por qué `RAGRouter` determinístico primero, Gemini como fallback**: la mayoría de las preguntas son determinísticas ("¿cuántas tareas?" → SQL). Sólo las preguntas ambiguas ("explícame el tema") merecen un clasificador LLM. Si la regla determinística acierta, evitamos una llamada a Gemini.
 
 **Por qué si la ruta es semantic/hybrid y Ollama no está → unsupported/relational**: si la ruta "semantic" requiere embeddings y Ollama no responde, devolvemos refusal (no podemos responder). Si la ruta es "hybrid" (combinada), caemos a "relational" automáticamente.
 
 **Por qué `record_rag_request` para Prometheus**: queremos medir cuántas requests RAG, por ruta, por idioma, y con qué resultado. Esto permite detectar degradaciones (subida de errores, cambios en la distribución de rutas).
+
+**Por qué la ruta `relational` usa un selector de template con LLM (`app/text_to_sql/template_selector.py`)**: el LLM nunca escribe SQL. Sólo elige un nombre de un enum cerrado con los 5 templates ya registrados en `allow_list.py` y llena los slots que ese template ya declaraba. Los slots de tipo id (`assignment_id`, `course_id`) se "groundean": antes de preguntarle al LLM, se corren dos SELECT siempre seguros (`courses_list`, `assignments_list`, sólo filtrados por `tenant_id`) y se le pide al LLM copiar el id EXACTO de esa lista — nunca inventar uno. Si el LLM devuelve un id que no está en la lista, o falla, o no hay pregunta disponible, se cae al template `assignments_due_between` con rango de fechas completo (nunca se ejecuta SQL fuera del allow-list, y la respuesta nunca queda vacía).
 
 ---
 

@@ -8,7 +8,6 @@ without touching the real Supabase database.
 
 from __future__ import annotations
 
-import sys
 from collections.abc import Generator
 
 import pytest
@@ -16,17 +15,14 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from app.core.db import create_all, drop_all, engine_for_url, session_factory_for
+from app.core.logging import configure_console_encoding
 
 WINDOWS_PYTHON_EXECUTABLE = r"C:\Users\Administrador\langchain\Scripts\python.exe"
 
 # Reconfigure stdout/stderr to UTF-8 so structlog's traceback
 # rendering (which emits Unicode box-drawing characters) does not
 # crash on Windows cp1252 shells.
-for _stream in (sys.stdout, sys.stderr):
-    try:
-        _stream.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
-    except (AttributeError, ValueError):
-        pass
+configure_console_encoding()
 
 
 @pytest.fixture

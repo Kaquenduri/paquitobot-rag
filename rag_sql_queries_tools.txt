@@ -1,0 +1,100 @@
+1. Nombre: get_user_profile
+Descripción: Útil para obtener la información básica del perfil del estudiante, como su nombre completo, nombre corto, correo electrónico y su ID de Canvas. Úsalo cuando el usuario pregunte por sus datos personales o de perfil.
+SQL:
+SELECT id, name, short_name, email, canvas_id
+FROM users
+WHERE tenant_id = {{tenant_id}} AND id = {{user_id}};
+Slots: {{tenant_id}}, {{user_id}}
+
+--------------------------------------------------
+
+2. Nombre: get_user_courses
+Descripción: Útil para consultar la lista de cursos en los que un estudiante está matriculado. Muestra el nombre del curso, código, fechas de inicio y fin, así como el rol y estado de la matrícula del estudiante. Úsalo cuando el estudiante pregunte "¿En qué cursos estoy inscrito?" o sobre detalles generales de sus materias.
+SQL:
+SELECT c.id, c.name, c.course_code, c.start_at, c.end_at, e.role, e.enrollment_state
+FROM courses c
+JOIN enrollments e ON c.id = e.course_id
+WHERE c.tenant_id = {{tenant_id}} 
+  AND e.tenant_id = {{tenant_id}}
+  AND e.user_id = {{user_id}};
+Slots: {{tenant_id}}, {{user_id}}
+
+--------------------------------------------------
+
+3. Nombre: get_course_assignments
+Descripción: Útil para obtener todas las tareas, exámenes o entregables (assignments) que existen dentro de un curso específico. Úsalo cuando el usuario pregunte qué tareas hay en un curso, las fechas de entrega generales de una materia o la descripción de las asignaciones.
+SQL:
+SELECT id, name, description, points_possible, due_at, grading_type
+FROM assignments
+WHERE tenant_id = {{tenant_id}} 
+  AND course_id = {{course_id}}
+ORDER BY due_at ASC;
+Slots: {{tenant_id}}, {{course_id}}
+
+--------------------------------------------------
+
+4. Nombre: get_assignment_details
+Descripción: Útil para consultar los detalles a fondo de una sola tarea (assignment) en particular. Muestra las fechas de bloqueo, desbloqueo, los puntos posibles y el estado de la tarea. Úsalo cuando el estudiante tenga dudas sobre los requerimientos, valor o límite de entrega de un trabajo en específico.
+SQL:
+SELECT name, description, points_possible, due_at, unlock_at, lock_at, grading_type, workflow_state
+FROM assignments
+WHERE tenant_id = {{tenant_id}} 
+  AND id = {{assignment_id}};
+Slots: {{tenant_id}}, {{assignment_id}}
+
+--------------------------------------------------
+
+5. Nombre: get_user_course_submissions
+Descripción: Útil para obtener las calificaciones, puntajes, notas (grades) y el estado de entrega (entregado a tiempo, tarde, no entregado) de todas las tareas de un estudiante dentro de un curso en particular. Úsalo cuando el usuario pregunte por sus notas en una materia o si ya le revisaron un trabajo.
+SQL:
+SELECT a.name AS assignment_name, s.score, a.points_possible, s.grade, s.submitted_at, s.late, s.missing, s.excused
+FROM submissions s
+JOIN assignments a ON s.assignment_id = a.id
+WHERE s.tenant_id = {{tenant_id}} 
+  AND a.tenant_id = {{tenant_id}}
+  AND s.user_id = {{user_id}} 
+  AND a.course_id = {{course_id}};
+Slots: {{tenant_id}}, {{user_id}}, {{course_id}}
+
+--------------------------------------------------
+
+6. Nombre: get_user_missing_submissions
+Descripción: Útil para encontrar específicamente qué tareas o trabajos NO ha entregado el estudiante (tareas faltantes) en todos sus cursos. Úsalo cuando el usuario pregunte "¿Qué tareas me faltan entregar?" o "¿Tengo trabajos pendientes?".
+SQL:
+SELECT c.name AS course_name, a.name AS assignment_name, a.due_at, a.points_possible
+FROM submissions s
+JOIN assignments a ON s.assignment_id = a.id
+JOIN courses c ON a.course_id = c.id
+WHERE s.tenant_id = {{tenant_id}} 
+  AND a.tenant_id = {{tenant_id}} 
+  AND c.tenant_id = {{tenant_id}}
+  AND s.user_id = {{user_id}} 
+  AND s.missing = true;
+Slots: {{tenant_id}}, {{user_id}}
+
+--------------------------------------------------
+
+7. Nombre: get_user_late_submissions
+Descripción: Útil para listar los trabajos que el estudiante sí entregó, pero fuera de tiempo (con retraso) en todos sus cursos. Úsalo cuando el usuario pregunte "¿Qué tareas entregué tarde?" o quiera saber sobre penalizaciones por entregas tardías.
+SQL:
+SELECT c.name AS course_name, a.name AS assignment_name, s.submitted_at, a.due_at, s.score, s.grade
+FROM submissions s
+JOIN assignments a ON s.assignment_id = a.id
+JOIN courses c ON a.course_id = c.id
+WHERE s.tenant_id = {{tenant_id}} 
+  AND a.tenant_id = {{tenant_id}} 
+  AND c.tenant_id = {{tenant_id}}
+  AND s.user_id = {{user_id}} 
+  AND s.late = true;
+Slots: {{tenant_id}}, {{user_id}}
+
+--------------------------------------------------
+
+8. Nombre: get_course_details
+Descripción: Útil para obtener la información y configuración general de un curso específico, incluyendo la cantidad de alumnos matriculados y el estado del curso. Úsalo para consultas administrativas o generales sobre una sola materia.
+SQL:
+SELECT name, course_code, start_at, end_at, workflow_state, enrollments_count
+FROM courses
+WHERE tenant_id = {{tenant_id}} 
+  AND id = {{course_id}};
+Slots: {{tenant_id}}, {{course_id}}

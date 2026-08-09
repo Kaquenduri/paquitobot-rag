@@ -52,36 +52,48 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     scheduler = None
     engine = None
-    if settings.scheduler_enabled:
+    rag_service = None
+    if settings.scheduler_enabled or not settings.disable_rag_routes:
         # PR 4 starts only the sync scheduler here.
         from app.core.db import make_engine_from_settings, session_factory_for
         from app.services.canvas_service import CanvasService
+        from app.services.rag_factory import build_rag_service
         from app.services.tenant_service import get_tenant_service
         from app.sync.scheduler import SyncScheduler
 
         engine = make_engine_from_settings(settings)
         session_factory = session_factory_for(engine)
         tenant_service = get_tenant_service()
-        scheduler = SyncScheduler(
-            settings,
-            session_factory=session_factory,
-            tenant_service=tenant_service,
-            sync_service=CanvasService(
-                settings=settings,
-                tenant_service=tenant_service,
+        rag_service = build_rag_service(settings, session_factory)
+        app.state.rag_service = rag_service
+
+        if settings.scheduler_enabled:
+            scheduler = SyncScheduler(
+                settings,
                 session_factory=session_factory,
-            ),
-        )
-        scheduler.start()
-        app.state.sync_scheduler = scheduler
-        app.state.sync_engine = engine
-        app.state.scheduler = scheduler
-        app.state.engine = engine
+                tenant_service=tenant_service,
+                sync_service=CanvasService(
+                    settings=settings,
+                    tenant_service=tenant_service,
+                    session_factory=session_factory,
+                ),
+            )
+            scheduler.start()
+            app.state.sync_scheduler = scheduler
+            app.state.sync_engine = engine
+            app.state.scheduler = scheduler
+            app.state.engine = engine
+        else:
+            app.state.sync_scheduler = None
+            app.state.sync_engine = engine
+            app.state.scheduler = None
+            app.state.engine = engine
     else:
         app.state.sync_scheduler = None
         app.state.sync_engine = None
         app.state.scheduler = None
         app.state.engine = None
+        app.state.rag_service = None
 
     try:
         yield
@@ -91,6 +103,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if engine is not None:
             engine.dispose()
         shutdown_tracing(tracer_provider)
+        app.state.rag_service = None
         log.info("app_stopped")
 
 

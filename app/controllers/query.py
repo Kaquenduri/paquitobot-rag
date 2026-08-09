@@ -29,7 +29,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import Settings, get_settings
@@ -90,15 +90,23 @@ class QueryResponse(BaseModel):
 
 
 def get_rag_service(
+    request: Request,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> RAGService:
     """Return a :class:`RAGService` built from the current settings.
 
     Tests override this dependency to inject a stub RAG service that
-    returns deterministic answers; the production path returns a
-    fresh instance per request (the service itself is stateless).
+    returns deterministic answers; the production path returns the
+    service instantiated once in the lifespan and stashed on
+    ``app.state``.  When the lifespan hasn't wired one (standalone
+    harnesses) we fall back to a fresh ``RAGService()`` with no
+    dependencies so the controller still returns a bounded refusal
+    rather than an empty answer.
     """
     _ = settings  # placeholder for future wiring (e.g. provider URL)
+    runtime_service = getattr(request.app.state, "rag_service", None)
+    if runtime_service is not None:
+        return runtime_service
     return RAGService()
 
 
