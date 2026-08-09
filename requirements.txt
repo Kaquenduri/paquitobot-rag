@@ -132,5 +132,5 @@ yarl==1.18.3
 zipp==3.21.0
 psycopg[binary]
 langchain-google-genai==2.0.1
-langchain-ollama==0.2.0
-langchain-postgres==0.0.12
+langchain-ollama>=0.2.0
+langchain-postgres>=0.0.13
