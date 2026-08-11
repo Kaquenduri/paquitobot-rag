@@ -5,12 +5,14 @@ The factory wires three production dependencies:
 * a :class:`~app.rag.vector_store.VectorStore` backed by PGVector;
 * a :class:`~app.text_to_sql.executor.execute_readonly` call site
   bound to a read-only SQLAlchemy session;
-* a Gemini chat model used to redact the candidate answer into the
-  final natural-language reply.
+* a MiniMax chat model (Anthropic-compatible endpoint) used to redact
+  the candidate answer into the final natural-language reply. The model
+  accepts the same tool-calling interface as the rest of the LangChain
+  ecosystem (``bind_tools``, ``with_structured_output``, ``invoke``).
 
 The factory is lazy by design: it never blocks the lifespan on a
-cold Ollama or unreachable Postgres.  Each dependency is initialised
-on the first request that needs it and cached afterwards.
+cold Ollama, unreachable Postgres, or MiniMax outage.  Each dependency
+is initialised on the first request that needs it and cached afterwards.
 """
 
 from __future__ import annotations
@@ -281,14 +283,24 @@ def _build_sql_agent(settings: Settings, db_session_factory: Any, llm_dep: Any):
 
 
 def _build_llm(settings: Settings) -> Any | None:
-    """Return a Gemini chat model or ``None`` on failure."""
-    try:
-        from langchain_google_genai import ChatGoogleGenerativeAI
+    """Return a MiniMax chat model (Anthropic-compatible) or ``None`` on failure.
 
-        return ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            google_api_key=settings.gemini_api_key,
+    MiniMax exposes an Anthropic-compatible endpoint at
+    ``https://api.minimax.io/anthropic`` that speaks the same Messages API
+    shape as Claude. ``ChatAnthropic`` accepts a ``base_url`` override so we
+    reuse the LangChain integration unchanged; ``bind_tools`` and
+    ``with_structured_output`` continue to work because they speak the
+    Anthropic contract.
+    """
+    try:
+        from langchain_anthropic import ChatAnthropic
+
+        return ChatAnthropic(
+            model=settings.minimax_model,
+            api_key=settings.minimax_api_key,
+            base_url=settings.minimax_base_url,
             temperature=0.0,
+            max_tokens=4096,
         )
     except Exception as exc:
         logger.exception(
@@ -305,7 +317,7 @@ def build_rag_service(
 ) -> RAGService:
     """Compose the production RAG service with lazy dependency initialisation.
 
-    The returned service is fully functional even when Ollama or Gemini
+    The returned service is fully functional even when Ollama or MiniMax
     are unreachable: each dependency is resolved on the first request
     that needs it, and a transient failure is contained to that
     request.
@@ -335,7 +347,7 @@ def build_rag_service(
 
 
 def _selftest() -> None:
-    """Build a RAG service; should never raise even when Ollama/Gemini are
+    """Build a RAG service; should never raise even when Ollama/MiniMax are
     unreachable.  Calling ``answer`` is a no-op for the lazy slots until
     the service actually needs them."""
     from app.core.config import Settings
@@ -347,7 +359,7 @@ def _selftest() -> None:
         supabase_database_url="postgresql+psycopg://127.0.0.1:1/selftest",
         tenant_token_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
         backend_secret="selftest-backend-secret-with-sufficient-length",
-        gemini_api_key="selftest",
+        minimax_api_key="selftest-minimax",
         ollama_host="http://127.0.0.1:1",
         canvas_api_base_url="https://canvas.invalid/api/v1",
     )

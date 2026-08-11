@@ -293,7 +293,7 @@ def _selftest() -> None:
         supabase_database_url="postgresql+psycopg://127.0.0.1:1/selftest",
         tenant_token_key=key,
         backend_secret="selftest-backend-secret-with-sufficient-length",
-        gemini_api_key="selftest-gemini-placeholder",
+        minimax_api_key="selftest-minimax-placeholder",
         ollama_host="http://127.0.0.1:1",
         canvas_api_base_url="https://canvas.invalid/api/v1",
         scheduler_enabled=False,

@@ -14,7 +14,7 @@ context: |
   Tech stack: Python 3.14 (venv at C:\Users\Administrador\langchain), LangChain 0.3.9, langchain-core 0.3.21, langchain-community 0.3.9, langchain-text-splitters 0.3.2, langchain-ollama (OllamaEmbeddings), langchain-google-genai (init_chat_model), langchain-postgres (PGVectorStore).
   Vector stores: ChromaDB 0.5.20 (persistent at ./chroma) and Supabase PGVector (table `documents`).
   Embeddings: Ollama local model `qwen3-embedding:8b`, 1024 dimensions.
-  LLM: Google Gemini 2.5 Flash via init_chat_model.
+  LLM: MiniMax-M3 via the Anthropic-compatible endpoint (`https://api.minimax.io/anthropic`).
   Data source: Canvas LMS REST API (Instructure). Extracted via `src/extract_canvas_data.py` -> JSON in `src/data/`.
   Architecture: Script-driven end-to-end pipeline orchestrated in `main.py`; modular boundaries in `src/` for ingestion (extract_canvas_data), loading/chunking (text_processor), and persistence (chroma_db, supabase).
   Testing: pytest 9.1.1 with pytest-asyncio 1.4.0 and pytest-cov 7.1.0; Ruff 0.16.1 and mypy 2.3.0 configured. strict_tdd disabled.
@@ -55,7 +55,7 @@ rules:
   specs:
     - Use Given/When/Then for scenarios.
     - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY).
-    - Secrets (CANVAS_API_TOKEN, SUPABASE_DATABASE_URL, GEMINI_API_KEY) MUST NEVER be persisted to openspec artifacts or printed in verify reports.
+    - Secrets (CANVAS_API_TOKEN, SUPABASE_DATABASE_URL, MINIMAX_API_KEY) MUST NEVER be persisted to openspec artifacts or printed in verify reports.
   design:
     - Include sequence diagrams for ingestion -> embedding -> retrieval -> answer flows when proposing changes that cross module boundaries.
     - Document architecture decisions with rationale; flag any decision that would change vector store, embedding model, or chunking parameters.

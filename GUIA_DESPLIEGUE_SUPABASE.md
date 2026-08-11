@@ -25,7 +25,7 @@
 3. Acceso al MCP de Supabase del proyecto donde está el vector store `documents` (1024 dim, según el diseño).
 4. Las credenciales que el usuario debe entregar ANTES de arrancar:
    - `SUPABASE_DATABASE_URL` con esquema `postgresql+psycopg://postgres:PASSWORD@HOST:PORT/DBNAME` (URL pooled de Supabase, no directa, para que el advisory lock funcione con `psycopg`).
-   - `GEMINI_API_KEY` (Google AI Studio).
+   - `MINIMAX_API_KEY` (https://platform.minimax.io/user-center/basic-information/interface-key).
    - Token personal de Canvas (`CANVAS_API_TOKEN`).
    - URL base de Canvas (`CANVAS_API_BASE_URL`, default `https://tecsup.instructure.com/api/v1`).
 5. Permisos en Supabase: el rol `postgres` debe poder `CREATE ROLE`, `GRANT`, `CONNECT`, y leer `information_schema`. El agente valida esto con una consulta previa.
@@ -278,7 +278,7 @@ Si esto falla, la clave no es Fernet válida; regenerar.
 ### 4.4 Anotar credenciales entregadas por el usuario
 
 El usuario entrega:
-- `GEMINI_API_KEY` (Google AI Studio).
+- `MINIMAX_API_KEY` (https://platform.minimax.io/user-center/basic-information/interface-key).
 - `CANVAS_API_TOKEN` (token personal del estudiante).
 - `CANVAS_API_BASE_URL` (default: `https://tecsup.instructure.com/api/v1`).
 
@@ -294,7 +294,9 @@ Editar `.env` con todos los valores. El archivo final debe verse así (reemplaza
 SUPABASE_DATABASE_URL=postgresql+psycopg://postgres:<password>@<host>:<port>/<dbname>
 TENANT_TOKEN_KEY=<fernnet-key>
 BACKEND_SECRET=<backend-secret>
-GEMINI_API_KEY=<gemini-key>
+MINIMAX_API_KEY=<minimax-key>
+MINIMAX_BASE_URL=https://api.minimax.io/anthropic
+MINIMAX_MODEL=MiniMax-M3
 OLLAMA_HOST=http://localhost:11434
 OLLAMA_EMBEDDING_MODEL=qwen3-embedding:8b
 OLLAMA_EMBED_DIM=1024
@@ -361,13 +363,15 @@ Esperado: el log NO contiene `gAAAAAabcdef0123` ni `postgresql://u:p`. Sí debe 
 
 ## PASO 6 — Validar servicios externos
 
-### 6.1 Gemini
+### 6.1 MiniMax (Anthropic-compatible)
 
 ```bash
-curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$GEMINI_API_KEY" \
+curl -s -X POST "$MINIMAX_BASE_URL/v1/messages" \
+  -H "x-api-key: $MINIMAX_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
   -H "Content-Type: application/json" \
-  -d '{"contents":[{"parts":[{"text":"responde con la palabra OK"}]}]}' \
-  | python -c "import json,sys; print(json.load(sys.stdin)['candidates'][0]['content']['parts'][0]['text'])"
+  -d '{"model":"'"$MINIMAX_MODEL"'","max_tokens":32,"messages":[{"role":"user","content":"responde con la palabra OK"}]}' \
+  | python -c "import json,sys; print(json.load(sys.stdin)['content'][0]['text'])"
 ```
 
 Esperado: `OK`. Si falla, la API key es inválida o el modelo cambió.

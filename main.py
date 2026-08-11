@@ -7,7 +7,7 @@ PR 1 introduces this wrapper. Behaviour is controlled by ``LEGACY_MODE``:
   ``--port`` from the command line (or its built-in defaults).
 * ``LEGACY_MODE=1``: fall back to the original script-mode pipeline
   (``src.extract_canvas_data`` → ``src.chroma_db`` / ``src.supabase`` →
-  similarity search → Gemini answer). Preserved verbatim so existing
+  similarity search → MiniMax answer). Preserved verbatim so existing
   workflows keep running until they are retired by a follow-up change.
 
 The wrapper itself NEVER logs or echoes environment values.
@@ -71,7 +71,11 @@ Indicar tu proposito en caso ocurra lo antes mencionado.
 
     prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
     prompt = prompt_template.format(context=context, question=query)
-    model = init_chat_model("google_genai:gemini-2.5-flash")
+    model = init_chat_model(
+        "anthropic:MiniMax-M3",
+        api_key=os.environ["MINIMAX_API_KEY"],
+        base_url=os.environ.get("MINIMAX_BASE_URL", "https://api.minimax.io/anthropic"),
+    )
     response = model.invoke(prompt)
     print(response.content)
 

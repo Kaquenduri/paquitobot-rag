@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -39,10 +38,8 @@ from app.sync import lock as sync_lock
 from app.sync.pipeline import (
     ERROR_AUTH_REJECTED,
     ERROR_CANVAS_UNAVAILABLE,
-    ERROR_SCHEMA_DRIFT,
     sync_tenant,
 )
-
 
 TENANT_A = uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 CANVAS_USER_ID = 4242

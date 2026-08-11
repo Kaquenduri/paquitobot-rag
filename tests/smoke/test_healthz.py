@@ -62,7 +62,7 @@ def test_healthz_lifespan_loads_settings(app_settings) -> None:
     assert settings.supabase_database_url.startswith("postgresql+psycopg://")
     assert settings.tenant_token_key == app_settings["TENANT_TOKEN_KEY"]
     assert settings.backend_secret == app_settings["BACKEND_SECRET"]
-    assert settings.gemini_api_key == app_settings["GEMINI_API_KEY"]
+    assert settings.minimax_api_key == app_settings["MINIMAX_API_KEY"]
     assert settings.canvas_api_base_url == app_settings["CANVAS_API_BASE_URL"]
     assert settings.ollama_host == app_settings["OLLAMA_HOST"]
 

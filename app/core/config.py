@@ -63,9 +63,17 @@ class Settings(BaseSettings):
         ...,
         description="HMAC secret for backend JWT (HS256) and signature checks.",
     )
-    gemini_api_key: str = Field(
+    minimax_api_key: str = Field(
         ...,
-        description="Google Gemini API key used by the LLM router.",
+        description="MiniMax API key used by the LLM router (Anthropic-compatible endpoint).",
+    )
+    minimax_base_url: str = Field(
+        default="https://api.minimax.io/anthropic",
+        description="Base URL of the MiniMax Anthropic-compatible endpoint.",
+    )
+    minimax_model: str = Field(
+        default="MiniMax-M3",
+        description="MiniMax model identifier (default MiniMax-M3).",
     )
     ollama_host: str = Field(
         ...,

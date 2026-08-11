@@ -3,7 +3,7 @@
 > Plan ejecutivo para un agente IA. El agente tiene acceso a:
 > - Repositorio GitHub: `https://github.com/Kaquenduri/paquitobot-rag` (rama `main`).
 > - Proyecto Supabase con credenciales de servicio (`SUPABASE_DATABASE_URL`).
-> - API Key de Google AI Studio (Gemini).
+> - API Key de MiniMax (endpoint Anthropic-compatible en `https://api.minimax.io/anthropic`).
 > - API URL + token de Canvas LMS (tecsup.instructure.com).
 > - Máquina/host Linux con Python 3.14 y `curl`/`psql`/`pg_dump` disponibles.
 >
@@ -16,7 +16,7 @@
 - **Modo**: autónomo con checkpoints. El agente ejecuta tareas en orden; cuando una tarea valida o falla, registra evidencia antes de continuar.
 - **Estado de tareas**: cada paso tiene `STATUS: TODO/IN_PROGRESS/DONE/BLOCKED` y un comando de validación que el agente corre para confirmar.
 - **Idempotencia**: cada paso es re-ejecutable. Si falla, el agente diagnostica con la evidencia registrada antes de continuar.
-- **Sin secretos en logs**: el agente nunca debe imprimir `SUPABASE_DATABASE_URL`, `TENANT_TOKEN_KEY`, `BACKEND_SECRET`, `GEMINI_API_KEY`, `CANVAS_API_TOKEN`, ni URLs completas con credenciales. Para verificar conexión usar códigos de salida y mensajes de error sanitizados.
+- **Sin secretos en logs**: el agente nunca debe imprimir `SUPABASE_DATABASE_URL`, `TENANT_TOKEN_KEY`, `BACKEND_SECRET`, `MINIMAX_API_KEY`, `CANVAS_API_TOKEN`, ni URLs completas con credenciales. Para verificar conexión usar códigos de salida y mensajes de error sanitizados.
 - **Reversibilidad**: cada paso deProvisioning tiene una contraparte de rollback. Si un paso destructivo falla, el agente debe poder restaurar el estado previo.
 - **Confirmación humana**: las acciones que tocan infraestructura compartida (crear roles en Postgres, drop de tablas, push a `main`) requieren que el agente pida confirmación explícita antes de proceder, salvo donde el plan diga `AUTONOMOUS`.
 - **Entorno Windows**: el intérprete configurado en `requirements.txt` y `pyproject.toml` es Windows-native. Si el agente corre en Linux/macOS, debe usar `python3.14` y ajustar `pip` accordingly. No usar `/mnt/c/...` desde Linux sin mapear a la ruta correcta del repo.
@@ -84,7 +84,7 @@ Solicitar:
 1. `SUPABASE_DATABASE_URL` (formato `postgresql+psycopg://postgres:PASSWORD@HOST:PORT/DBNAME`).
 2. `TENANT_TOKEN_KEY`: ejecutar `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` y entregar el resultado.
 3. `BACKEND_SECRET`: el agente genera `python -c "import secrets; print(secrets.token_urlsafe(64))"`.
-4. `GEMINI_API_KEY`: pedir al usuario.
+4. `MINIMAX_API_KEY`: pedir al usuario (https://platform.minimax.io/user-center/basic-information/interface-key).
 5. `CANVAS_API_BASE_URL`: confirmar `https://tecsup.instructure.com/api/v1`.
 6. `CANVAS_API_TOKEN` (token personal de prueba del usuario en Canvas).
 7. Confirmar si `SCHEDULER_ENABLED=true` para esta primera versión.
@@ -202,16 +202,18 @@ curl -s http://localhost:11434/api/embeddings \
 
 STATUS esperado: `dim: 1024`. Si Ollama corre en otro host, ajustar `OLLAMA_HOST` en `.env`.
 
-### 2.2 Verificar Gemini API
+### 2.2 Verificar MiniMax API (Anthropic-compatible)
 
 ```bash
-curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$GEMINI_API_KEY" \
+curl -s -X POST "$MINIMAX_BASE_URL/v1/messages" \
+  -H "x-api-key: $MINIMAX_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
   -H "Content-Type: application/json" \
-  -d '{"contents":[{"parts":[{"text":"responde con la palabra OK"}]}]}' \
-  | python -c "import json,sys; print(json.load(sys.stdin)['candidates'][0]['content']['parts'][0]['text'])"
+  -d '{"model":"'"$MINIMAX_MODEL"'","max_tokens":32,"messages":[{"role":"user","content":"responde con la palabra OK"}]}' \
+  | python -c "import json,sys; print(json.load(sys.stdin)['content'][0]['text'])"
 ```
 
-STATUS esperado: `OK`. Si Gemini no responde, verificar la API key en `https://aistudio.google.com/apikey`.
+STATUS esperado: `OK`. Si MiniMax no responde, verificar la API key en `https://platform.minimax.io/user-center/basic-information/interface-key`.
 
 ### 2.3 Verificar acceso a Canvas
 
@@ -523,7 +525,9 @@ DROP ROLE IF EXISTS pg_role_canvas_readonly;
 SUPABASE_DATABASE_URL   # postgresql+psycopg://...
 TENANT_TOKEN_KEY        # Fernet key
 BACKEND_SECRET          # JWT HMAC secret
-GEMINI_API_KEY          # Google AI Studio
+MINIMAX_API_KEY         # MiniMax (Anthropic-compatible)
+MINIMAX_BASE_URL         # Opcional, default https://api.minimax.io/anthropic
+MINIMAX_MODEL            # Opcional, default MiniMax-M3
 OLLAMA_HOST             # default http://localhost:11434
 CANVAS_API_BASE_URL     # https://tecsup.instructure.com/api/v1
 ```

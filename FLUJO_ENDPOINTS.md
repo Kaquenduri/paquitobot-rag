@@ -114,9 +114,9 @@ verify_backend_jwt_dependency  →  require_tenant  →  require_tenant_token
 
 **Por qué `disable_rag_routes` feature flag**: en operaciones de mantenimiento (ej. reindexar embeddings), el operador quiere desactivar `/query` sin redesplegar. El endpoint devuelve 503 en lugar de colgar.
 
-**Por qué `detect_language` heurística y no LLM**: sigue siendo regex rápido y determinístico, pero sólo alimenta el campo `lang` de la respuesta, las métricas y el `bounded_refusal` (cuando no hay LLM disponible). El texto de la respuesta real YA NO depende de este regex: el prompt que recibe Gemini incluye la pregunta textual del usuario y le pide detectar el idioma y responder en el mismo, dentro de la misma llamada que genera la respuesta (sin tokens extra). Esto corrige el caso en que el regex fallaba (ej. "que" sin tilde) y la respuesta salía en el idioma equivocado.
+**Por qué `detect_language` heurística y no LLM**: sigue siendo regex rápido y determinístico, pero sólo alimenta el campo `lang` de la respuesta, las métricas y el `bounded_refusal` (cuando no hay LLM disponible). El texto de la respuesta real YA NO depende de este regex: el prompt que recibe MiniMax incluye la pregunta textual del usuario y le pide detectar el idioma y responder en el mismo, dentro de la misma llamada que genera la respuesta (sin tokens extra). Esto corrige el caso en que el regex fallaba (ej. "que" sin tilde) y la respuesta salía en el idioma equivocado.
 
-**Por qué `RAGRouter` determinístico primero, Gemini como fallback**: la mayoría de las preguntas son determinísticas ("¿cuántas tareas?" → SQL). Sólo las preguntas ambiguas ("explícame el tema") merecen un clasificador LLM. Si la regla determinística acierta, evitamos una llamada a Gemini.
+**Por qué `RAGRouter` determinístico primero, MiniMax como fallback**: la mayoría de las preguntas son determinísticas ("¿cuántas tareas?" → SQL). Sólo las preguntas ambiguas ("explícame el tema") merecen un clasificador LLM. Si la regla determinística acierta, evitamos una llamada a MiniMax.
 
 **Por qué si la ruta es semantic/hybrid y Ollama no está → unsupported/relational**: si la ruta "semantic" requiere embeddings y Ollama no responde, devolvemos refusal (no podemos responder). Si la ruta es "hybrid" (combinada), caemos a "relational" automáticamente.
 
@@ -188,7 +188,7 @@ verify_backend_jwt_dependency  →  require_tenant  →  require_tenant_token
 
 **Por qué reglas heurísticas primero**: la mayoría de las preguntas son determinísticas ("¿cuántas tareas?", "¿cuál es mi nota?"). Una regex es O(1) y exacta. La LLM es lenta y costosa.
 
-**Por qué fallback a `relational` cuando no hay classifier**: el sistema es defensivo. Si no hay Gemini configurado, devolvemos la ruta más probable (SQL) en lugar de fallar.
+**Por qué fallback a `relational` cuando no hay classifier**: el sistema es defensivo. Si no hay MiniMax configurado, devolvemos la ruta más probable (SQL) en lugar de fallar.
 
 **Por qué si la ruta es semantic/hybrid y no hay embeddings → unsupported/relational**: semantic puro sin embeddings es irrealizable. Hybrid degrada a relational porque la parte SQL sigue funcionando.
 

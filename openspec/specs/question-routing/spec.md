@@ -8,7 +8,7 @@ Route each authenticated student's question to safe relational, vector, or hybri
 
 ### Requirement: Deterministic-First Routing
 
-The router MUST apply deterministic rules before any model classifier. It SHALL route explicit dates, counts, grades, statuses, and aggregations to relational retrieval; semantic explanation to vector retrieval; and mixed evidence to hybrid retrieval. Gemini 2.5 Flash MAY classify only unresolved ambiguity and MUST return a supported route label.
+The router MUST apply deterministic rules before any model classifier. It SHALL route explicit dates, counts, grades, statuses, and aggregations to relational retrieval; semantic explanation to vector retrieval; and mixed evidence to hybrid retrieval. MiniMax-M3 (Anthropic-compatible endpoint) MAY classify only unresolved ambiguity and MUST return a supported route label.
 
 #### Scenario: Rule identifies an aggregate question
 
@@ -21,7 +21,7 @@ The router MUST apply deterministic rules before any model classifier. It SHALL 
 
 - GIVEN deterministic rules produce no confident route
 - WHEN routing continues
-- THEN Gemini 2.5 Flash MAY classify the question
+- THEN MiniMax-M3 (Anthropic-compatible endpoint) MAY classify the question
 - AND its output MUST be limited to supported route labels
 
 ### Requirement: Guarded Relational Routing

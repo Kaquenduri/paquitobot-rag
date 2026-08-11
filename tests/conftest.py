@@ -37,7 +37,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
         "TENANT_TOKEN_KEY": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
         "BACKEND_SECRET": "test-only-backend-secret",
         "CANVAS_API_BASE_URL": "https://canvas.invalid/api/v1",
-        "GEMINI_API_KEY": "test-only-gemini-key",
+        "MINIMAX_API_KEY": "test-only-minimax-key",
         "OLLAMA_HOST": "http://127.0.0.1:1",
         "SCHEDULER_ENABLED": "false",
         "DISABLE_RAG_ROUTES": "true",

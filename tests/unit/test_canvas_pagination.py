@@ -16,7 +16,6 @@ Coverage:
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -29,7 +28,6 @@ from app.canvas.pagination import (
     _parse_link_header,
     paginate,
 )
-
 
 # ---------------------------------------------------------------------------
 # Link header parsing helpers

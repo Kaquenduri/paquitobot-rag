@@ -156,7 +156,7 @@ def _selftest() -> None:
     os.environ.setdefault("SUPABASE_DATABASE_URL", "postgresql+psycopg://127.0.0.1:1/test")
     os.environ.setdefault("TENANT_TOKEN_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
     os.environ.setdefault("BACKEND_SECRET", "test-only-secret")
-    os.environ.setdefault("GEMINI_API_KEY", "test")
+    os.environ.setdefault("MINIMAX_API_KEY", "test")
     os.environ.setdefault("OLLAMA_HOST", "http://127.0.0.1:1")
     os.environ.setdefault("CANVAS_API_BASE_URL", "https://canvas.invalid/api/v1")
 

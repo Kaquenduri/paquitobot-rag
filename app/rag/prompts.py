@@ -31,7 +31,7 @@ def _question_prompt(kind: str, question: str) -> str:
 
     Unlike ``_prompt`` (used for the deterministic ``bounded_refusal``
     fallback, which never calls an LLM), these prompts embed the user's
-    actual question and let Gemini detect its language directly — the
+    actual question and let MiniMax detect its language directly — the
     regex-based ``detect_language`` is a fast pre-filter for routing and
     metrics, not reliable enough to dictate the final answer's language.
     """

@@ -31,7 +31,6 @@ from app.services.canvas_service import (
 from app.services.tenant_service import TenantNotFound
 from app.sync.pipeline import SyncResult
 
-
 TENANT_ID = uuid.UUID("aaaa1111-aaaa-1111-aaaa-111111111111")
 
 
@@ -42,7 +41,7 @@ def _settings() -> Any:
         supabase_database_url="postgresql+psycopg://127.0.0.1:1/test",
         tenant_token_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
         backend_secret="x" * 32,
-        gemini_api_key="test",
+        minimax_api_key="test",
         ollama_host="http://127.0.0.1:1",
         canvas_api_base_url="https://canvas.test/api/v1",
         manual_sync_min_interval_seconds=60,

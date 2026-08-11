@@ -237,7 +237,7 @@ def _selftest() -> None:
         os.environ["SUPABASE_DATABASE_URL"] = (
             "postgresql+psycopg://127.0.0.1:1/primer_rag_test"
         )
-        os.environ["GEMINI_API_KEY"] = "test-only-gemini"
+        os.environ["MINIMAX_API_KEY"] = "test-only-minimax"
         os.environ["OLLAMA_HOST"] = "http://127.0.0.1:1"
         os.environ["CANVAS_API_BASE_URL"] = "https://canvas.invalid/api/v1"
         get_settings.cache_clear()

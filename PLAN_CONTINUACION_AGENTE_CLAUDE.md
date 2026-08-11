@@ -39,7 +39,7 @@
 
 ## 2. Objetivo inmediato
 
-> Que `POST /query` responda con `answer` no vacío usando datos reales de Supabase + Gemini + Ollama/PGVector.
+> Que `POST /query` responda con `answer` no vacío usando datos reales de Supabase + MiniMax (Anthropic-compatible) + Ollama/PGVector.
 
 Actualmente `/query` devuelve `200` pero `answer` vacío porque el orquestador no tenía dependencias inyectadas. El cableado ya está hecho (factory + lifespan + controller), falta pulir y validar.
 
@@ -80,7 +80,7 @@ os.environ.update({
   'SUPABASE_DATABASE_URL': 'postgresql+psycopg://127.0.0.1:1/selftest',
   'TENANT_TOKEN_KEY': 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
   'BACKEND_SECRET': 'selftest-backend-secret-with-sufficient-length',
-  'GEMINI_API_KEY': 'selftest',
+  'MINIMAX_API_KEY': 'selftest',
   'OLLAMA_HOST': 'http://127.0.0.1:1',
   'CANVAS_API_BASE_URL': 'https://canvas.invalid/api/v1',
 })
@@ -100,7 +100,7 @@ PYTHONPATH=. /mnt/c/Users/Administrador/langchain/Scripts/python.exe -X utf8 -m 
 ```
 (El `_selftest()` del controller ya valida el flujo con stubs.)
 
-**Opción B (real)**: con Supabase + Ollama + Gemini configurados en `.env`:
+**Opción B (real)**: con Supabase + Ollama + MiniMax configurados en `.env`:
 ```bash
 set LEGACY_MODE=0
 /mnt/c/Users/Administrador/langchain/Scripts/python.exe main.py
@@ -115,7 +115,7 @@ Se espera `answer` no vacío (ej: lista de cursos del tenant).
 ### Paso 5 — Commit (sin push)
 ```bash
 git add app/ services/rag_factory.py main.py 2>/dev/null || git add -A
-git commit -m "feat(rag): wire RAG end-to-end (PGVector + Gemini + SQL executor)"
+git commit -m "feat(rag): wire RAG end-to-end (PGVector + MiniMax + SQL executor)"
 ```
 **NO incluir**:
 - `.env`
@@ -162,9 +162,9 @@ RAGService.answer(question, tenant_id, language)
    ├── provider_health() refresca router.embedding_available
    │
    ├── RAGRouter.route(question)
-   │     ├── relational  → sql_executor (allow-list) → _summarize(Gemini)
-   │     ├── semantic    → vector_store (PGVector + Ollama) → _summarize(Gemini)
-   │     └── hybrid      → vector + sql → _summarize(Gemini)
+   │     ├── relational  → sql_executor (allow-list) → _summarize(MiniMax)
+   │     ├── semantic    → vector_store (PGVector + Ollama) → _summarize(MiniMax)
+   │     └── hybrid      → vector + sql → _summarize(MiniMax)
    │
    ▼
 {answer, lang, route, correlation_id}
@@ -179,7 +179,7 @@ RAGService.answer(question, tenant_id, language)
 - **Sólo datos propios**: no exponer datos de compañeros.
 - **Sync cada 6 horas** + manual (rate-limited).
 - **Respuestas en el idioma de la pregunta**.
-- **Gemini 2.5 Flash** para chat; **Ollama qwen3-embedding:8b** para embeddings.
+- **MiniMax-M3 (Anthropic-compatible endpoint)** para chat; **Ollama qwen3-embedding:8b** para embeddings.
 - **PostgreSQL/Supabase** como base relacional + PGVector para vectores.
 - **Tenant_id** como clave de aislamiento (UUID interno, derivado del JWT `sub`).
 
@@ -191,7 +191,7 @@ RAGService.answer(question, tenant_id, language)
 |---|---|
 | `PGVector` cuelga al boot | `_LazyInit` en el factory |
 | Ollama caído | `provider_health()` degrada semántico→`unsupported`, híbrido→relational |
-| Gemini falla | `_default_llm_summarizer` devuelve `bounded_refusal` no vacío |
+| MiniMax falla | `_default_llm_summarizer` devuelve `bounded_refusal` no vacío |
 | Cambios de schema de Canvas | Logging `sync_schema_drift_detail` con campo exacto |
 | Push requiere PAT | Pedir al usuario un token antes del push |
 

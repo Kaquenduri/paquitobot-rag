@@ -8,13 +8,13 @@
 
 ## 0. La foto grande en un párrafo
 
-PaquitoBot es un **asistente conversacional para estudiantes de una universidad que usa Canvas LMS**. El estudiante le entrega su token personal de Canvas una sola vez, PaquitoBot sincroniza los datos de su cuenta (cursos, tareas, entregas, calificaciones) en una base de datos propia, y desde ese momento el estudiante puede preguntarle en español cosas como *"¿qué tareas tengo para esta semana?"*, *"¿cuál es mi promedio en el curso de Cálculo?"* o *"explicame las submissions que me faltan"*. Las respuestas se construyen con tres fuentes de información: SQL directo sobre Postgres, búsqueda semántica con embeddings en PGVector, y un modelo de lenguaje (Gemini 2.5 Flash) que genera la respuesta natural. **Nunca se escriben datos en Canvas** (es read-only) y los datos de un estudiante nunca se mezclan con los de otro (multiusuario estricto).
+PaquitoBot es un **asistente conversacional para estudiantes de una universidad que usa Canvas LMS**. El estudiante le entrega su token personal de Canvas una sola vez, PaquitoBot sincroniza los datos de su cuenta (cursos, tareas, entregas, calificaciones) en una base de datos propia, y desde ese momento el estudiante puede preguntarle en español cosas como *"¿qué tareas tengo para esta semana?"*, *"¿cuál es mi promedio en el curso de Cálculo?"* o *"explicame las submissions que me faltan"*. Las respuestas se construyen con tres fuentes de información: SQL directo sobre Postgres, búsqueda semántica con embeddings en PGVector, y un modelo de lenguaje (**MiniMax-M3**, expuesto en endpoint Anthropic-compatible) que genera la respuesta natural. **Nunca se escriben datos en Canvas** (es read-only) y los datos de un estudiante nunca se mezclan con los de otro (multiusuario estricto).
 
 Tres actores con los que el sistema conversa:
 
 1. **El estudiante**: hace `POST /query` desde su app cliente y al inicio le entrega su token Canvas en `POST /auth/canvas/connect`.
 2. **Canvas (la universidad)**: PaquitoBot consulta su API REST para bajar datos.
-3. **Gemini + Ollama**: Gemini redacta la respuesta en lenguaje natural; Ollama genera los vectores de embeddings localmente.
+3. **MiniMax + Ollama**: MiniMax redacta la respuesta en lenguaje natural (vía endpoint Anthropic-compatible); Ollama genera los vectores de embeddings localmente.
 
 ---
 
@@ -24,7 +24,7 @@ Tres actores con los que el sistema conversa:
 
 Cuando alguien corre `python main.py`, lo primero que pasa es que este archivo decide **qué versión del programa se va a ejecutar**. ¿Por qué dos versiones? Porque el proyecto pasó por una primera fase experimental (llamada *legacy*) que era un script de consola ejecutando todo en un solo proceso, y después se migró a un monolito FastAPI.
 
-- Si la variable de entorno `LEGACY_MODE=1`, ejecuta el script original: lee JSONs locales, los chunckea, los embebe con Ollama, los guarda en PGVector local, y finalmente corre una query de prueba con Gemini. Sirve para validar la cadena de embeddings sin levantar el servidor.
+- Si la variable de entorno `LEGACY_MODE=1`, ejecuta el script original: lee JSONs locales, los chunckea, los embebe con Ollama, los guarda en PGVector local, y finalmente corre una query de prueba con MiniMax. Sirve para validar la cadena de embeddings sin levantar el servidor.
 - Si `LEGACY_MODE=0` (default), lanza `uvicorn app.main:app` y queda escuchando en `HOST:PORT`. **Este es el camino de producción.**
 
 Sirve para que el equipo de desarrollo tenga un "ground truth" simple cuando algo falla: si la versión legacy anda y la nueva no, el problema es del monolito, no del modelo.
@@ -38,7 +38,7 @@ Acá se crea la única instancia de `FastAPI` y se montan los routers. El `lifes
 2. Configura logs JSON estructurados con `correlation_id` por request.
 3. Si `SCHEDULER_ENABLED` o el RAG está habilitado, crea el `engine` SQLAlchemy y la `session_factory`.
 4. Construye el `TenantService` (la pieza que descifra tokens Canvas).
-5. Construye el `RAGService` vía `build_rag_service()` — **de forma lazy**: no conecta con Ollama ni con Gemini en el arranque, así la app puede bootear aunque esos servicios estén caídos.
+5. Construye el `RAGService` vía `build_rag_service()` — **de forma lazy**: no conecta con Ollama ni con MiniMax en el arranque, así la app puede bootear aunque esos servicios estén caídos.
 6. Si `SCHEDULER_ENABLED=True`, instala el `SyncScheduler` (APScheduler) que ejecuta el sync cada 6 horas.
 
 **En el shutdown**: apaga scheduler, hace `dispose()` del engine, y cierra el tracer.
@@ -53,7 +53,7 @@ El orden importa: ningún router acepta requests hasta que el lifespan termine, 
 
 ### 2.1 Para qué sirve
 
-`Settings` (Pydantic Settings) carga **todas** las variables de entorno en un único objeto inmutable. El resto del código hace `settings.gemini_api_key`, `settings.ollama_host`, etc. Esto sirve para tener una sola fuente de verdad sobre qué variables existen, validar tipos al iniciar, y fallar ruidosamente si falta algo crítico.
+`Settings` (Pydantic Settings) carga **todas** las variables de entorno en un único objeto inmutable. El resto del código hace `settings.minimax_api_key`, `settings.ollama_host`, etc. Esto sirve para tener una sola fuente de verdad sobre qué variables existen, validar tipos al iniciar, y fallar ruidosamente si falta algo crítico.
 
 ### 2.2 Las variables de entorno
 
@@ -64,7 +64,7 @@ Las agrupo por **para qué sirven** en vez de por orden alfabético:
 | **Conexión a datos** | `SUPABASE_DATABASE_URL` | URL de Postgres/Supabase (con prefijo `postgresql+psycopg://` o `+asyncpg://`). Sirve para todo el SQL relacional y para PGVector. |
 | **Seguridad** | `TENANT_TOKEN_KEY` | Llave Fernet (urlsafe-base64 de 32 bytes). Sirve para **cifrar los tokens Canvas** antes de persistirlos. Si esto se pierde, nadie puede entrar a Canvas. |
 | | `BACKEND_SECRET` | Secret HS256 para firmar y verificar los JWT que emite PaquitoBot. Sirve para que solo PaquitoBot confíe en los JWT emitidos por sí mismo. |
-| **Proveedores externos** | `GEMINI_API_KEY` | API key de Google AI Studio. Sirve para llamar a Gemini 2.5 Flash. |
+| **Proveedores externos** | `MINIMAX_API_KEY` | API key de MiniMax (endpoint Anthropic-compatible). Sirve para llamar al modelo que redacta las respuestas. |
 | | `OLLAMA_HOST` | URL base del servidor Ollama local. Sirve para generar embeddings. |
 | | `CANVAS_API_BASE_URL` | URL base de la API REST de Canvas. Ej: `https://tecsup.instructure.com/api/v1`. |
 | **Embeddings** | `OLLAMA_EMBEDDING_MODEL` | Modelo de Ollama (default `qwen3-embedding:8b`). Sirve para decidir qué embedding usar. |
@@ -152,7 +152,7 @@ Sirve para que la API sea stateless: no hay sesión de servidor, el JWT contiene
 ### 4.3 `app/security/redaction.py` — Redacción universal
 
 **Para qué existe**: aplicar `***REDACTED***` a credenciales antes de que lleguen al log stream. Funciona en dos niveles:
-- Nombres de keys sensibles (`authorization`, `token`, `ciphertext`, `password`, `database_url`, `gemini_api_key`, etc.) → redacta el valor.
+- Nombres de keys sensibles (`authorization`, `token`, `ciphertext`, `password`, `database_url`, `minimax_api_key`, etc.) → redacta el valor.
 - Mensajes crudos (regex Fernet, Bearer, PG URL) → redacta dentro del string.
 
 Está hecho para **nunca crashear logging**: si el filter falla, mejor logear algo recortado que perder la línea entera.
@@ -355,7 +355,7 @@ Cuando llega `POST /query`, pasan DOS cosas en paralelo: el sistema decide **de 
 3. `route="unsupported"` → `bounded_refusal`.
 4. `route="relational"`:
    - Si hay agente, intenta `_agent_answer` (tool-calling).
-   - Si no, `sql_executor(tenant_id, raw_sql?, question)` → `_summarize` (Gemini).
+   - Si no, `sql_executor(tenant_id, raw_sql?, question)` → `_summarize` (MiniMax).
    - Si no hay LLM, devuelve las filas formateadas.
 5. `route="hybrid"`: si no hay vector store o LLM, degrada a `relational`. Si no, hace `vector_store.similarity_search(k=20)`, también invoca el executor, manda prompt híbrido a `_summarize`.
 6. `route="semantic"`: `similarity_search(k=8)`, prompt vector, `_summarize`.
@@ -366,14 +366,14 @@ Cuando llega `POST /query`, pasan DOS cosas en paralelo: el sistema decide **de 
 
 ### 8.9 `app/services/rag_factory.py` — composición lazy
 
-**Para qué existe**: el problema de la versión anterior era que `RAGService` se construía en el lifespan y, si Ollama o Gemini estaban caídos, la app **no podía bootear**. La solución: lazy init.
+**Para qué existe**: el problema de la versión anterior era que `RAGService` se construía en el lifespan y, si Ollama o MiniMax estaban caídos, la app **no podía bootear**. La solución: lazy init.
 
 - `class _LazyInit(builder, name)`: thread-safe. En la primera llamada a `.get()`, ejecuta el builder. Cachea el resultado o captura la excepción y devuelve `None`. Tiene `.reset()` para tests.
 - `build_rag_service(settings, db_session_factory)`: arma los 4 componentes lazy:
   - **`vector_store`**: `OllamaEmbeddings(base_url, model=..., validate_model_on_init=False, client_kwargs={"timeout": 5.0})` + `PGVector`. Envuelto en `VectorStore`.
   - **`sql_executor`**: closure que (a) llama `select_template(llm, question, courses, assignments)` con grounding, o (b) usa `FALLBACK_TEMPLATE`, y (c) ejecuta `execute_readonly`.
   - **`sql_agent`**: closure que invoca `run_sql_agent(llm, question, runtime=_TenantToolRuntime(...))`.
-  - **`llm`**: `ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=..., temperature=0.0)`.
+  - **`llm`**: `ChatAnthropic(model=settings.minimax_model, api_key=..., base_url=settings.minimax_base_url, temperature=0.0, max_tokens=4096)` apuntando al endpoint Anthropic-compatible de MiniMax.
 
 **Conexión con el resto**: lo llama `app/main.py` lifespan. Es el pegamento entre `RAGService` y todos los submódulos.
 
@@ -562,7 +562,7 @@ pytest -q --no-cov tests/unit tests/smoke  # toda la suite
 
 **Las piezas que participan en cada comando**:
 - Al arrancar: `main.py` → `app/main.py:create_app()` → lifespan → `Settings` → `RAGService (lazy)` → scheduler.
-- Al pedir `/query`: middleware (correlation_id) → `core/deps.py:require_tenant_token` → `TenantService.get_decrypted_canvas_token` → `RAGService.answer` → router → (relational | semantic | hybrid) → Gemini + Ollama → `QueryResponse`.
+- Al pedir `/query`: middleware (correlation_id) → `core/deps.py:require_tenant_token` → `TenantService.get_decrypted_canvas_token` → `RAGService.answer` → router → (relational | semantic | hybrid) → MiniMax + Ollama → `QueryResponse`.
 - Al pedir `/sync`: middleware → `require_tenant_token` → `CanvasService.run_sync_for_tenant` → lock → `sync_tenant` → `paginate` + DTOs + `upsert_by_canvas_id` + `sync_state`.
 
 ---
@@ -618,8 +618,8 @@ pytest -q --no-cov tests/unit tests/smoke  # toda la suite
 
 
 
-Gemini 2.5 Flash ←───────  RAGService.answer
-(summarize)               usa Gemini para redactar
+MiniMax-M3 ←──────────  RAGService.answer
+(Anthropic-compatible)  usa MiniMax para redactar
 ```
 
 ---
@@ -633,13 +633,13 @@ Si vas a tocar código, estas decisiones ya están tomadas y hay que respetarlas
 3. **Datos solos propios**: nunca se exponen datos de otros estudiantes. `strip_peer_data` filtra las submissions de pares.
 4. **Sync cada 6h + manual rate-limited**: no se martillea Canvas.
 5. **Respuestas en el idioma de la pregunta**. El LLM detecta, no se fuerza.
-6. **Gemini 2.5 Flash para chat**, Ollama para embeddings. Costo y latencia.
+6. **MiniMax-M3 (endpoint Anthropic-compatible) para chat**, Ollama para embeddings. Costo y latencia.
 7. **Postgres para todo**: SQLAlchemy + PGVector. No hay otra base.
 8. **TenantId como UUID interno**: derivado del `sub` (string) del JWT. Eso evita adivinar.
 9. **Watermark solo avanza si el sync fue exitoso**: si algo falla, no se pierde progreso.
 10. **Fail-closed en config**: si falta una variable de entorno crítica, boom al startup, no en producción.
 11. **RedactionFilter everywhere**: un secreto nunca llega al log.
-12. **Lazy init de dependencias externas**: la app arranca aunque Ollama o Gemini estén caídos.
+12. **Lazy init de dependencias externas**: la app arranca aunque Ollama o MiniMax estén caídos.
 
 ---
 

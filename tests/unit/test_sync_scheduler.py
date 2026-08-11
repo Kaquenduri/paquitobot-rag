@@ -16,7 +16,6 @@ from __future__ import annotations
 import asyncio
 import random
 import uuid
-from collections.abc import Iterator
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -24,14 +23,13 @@ import pytest
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import Settings
+from app.sync import lock as sync_lock
 from app.sync.scheduler import (
-    _WorkerPool,
     SyncScheduler,
+    _WorkerPool,
     apply_jitter,
     jitter_seconds,
 )
-from app.sync import lock as sync_lock
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -44,7 +42,7 @@ def _basic_settings(**overrides: Any) -> Settings:
         "supabase_database_url": "postgresql+psycopg://127.0.0.1:1/test",
         "tenant_token_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
         "backend_secret": "x" * 32,
-        "gemini_api_key": "test",
+        "minimax_api_key": "test",
         "ollama_host": "http://127.0.0.1:1",
         "canvas_api_base_url": "https://canvas.test/api/v1",
         "scheduler_enabled": True,
@@ -161,9 +159,10 @@ def test_scheduler_tick_dispatches_per_tenant(
     db_session: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The tick callback runs the pipeline for each tenant that has credentials."""
+    from cryptography.fernet import Fernet
+
     from app.models import CanvasCredential, Tenant
     from app.security.token_crypto import TokenCipher
-    from cryptography.fernet import Fernet
 
     # Seed two tenants with credentials.
     tenant_ids = [
@@ -235,7 +234,7 @@ def test_scheduler_tick_no_tenants_logs_only(
         dispatched.append(tenant_id)
 
     monkeypatch.setattr(scheduler, "_run_for_tenant", fake_run)
-    monkeypatch.setattr(scheduler, "_list_tenant_ids", lambda: [])
+    monkeypatch.setattr(scheduler, "_list_tenant_ids", list)
 
     asyncio.run(scheduler._tick())
     assert dispatched == []

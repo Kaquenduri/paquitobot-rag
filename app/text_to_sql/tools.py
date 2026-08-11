@@ -236,7 +236,7 @@ TOOL_NAMES: tuple[str, ...] = tuple(TOOL_CATALOG)
 
 
 def tool_specs() -> list[dict[str, object]]:
-    """Render the catalog as OpenAI/Gemini-style function declarations.
+    """Render the catalog as OpenAI/Anthropic-style function declarations.
 
     Consumed by :func:`app.rag.agent.bind_catalog`; kept here so the
     model-facing shape lives next to the catalog it describes.
