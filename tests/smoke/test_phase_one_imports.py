@@ -52,6 +52,7 @@ def test_settings_fail_closed_when_required_env_missing(
         "MINIMAX_API_KEY",
         "OLLAMA_HOST",
         "CANVAS_API_BASE_URL",
+        "GOOGLE_CLIENT_ID",
     ):
         monkeypatch.delenv(key, raising=False)
 

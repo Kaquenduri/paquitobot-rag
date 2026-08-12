@@ -17,6 +17,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
@@ -136,6 +137,28 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
     app.add_middleware(CorrelationIdMiddleware)
+
+    # CORS: web frontends (e.g. a local dev dashboard on :3000) need
+    # this to call the API; native mobile clients do not. The empty
+    # list disables CORS entirely. We read settings via the cached
+    # ``get_settings()`` so it works in tests that call ``create_app``
+    # directly without the lifespan.
+    startup_settings = get_settings()
+    if startup_settings.cors_allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=startup_settings.cors_allowed_origins,
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "X-Correlation-ID"],
+            expose_headers=["X-Correlation-ID"],
+        )
+        from app.core.logging import get_logger
+
+        get_logger("app.boot").info(
+            "cors_configured",
+            allowed_origins=startup_settings.cors_allowed_origins,
+        )
 
     # Mount every controller (PR 6 task 6.7).
     from app.controllers.auth import router as auth_router

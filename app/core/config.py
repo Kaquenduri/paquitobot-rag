@@ -15,6 +15,7 @@ from typing import Literal
 from pydantic import Field, field_validator
 from pydantic_settings import (
     BaseSettings,
+    EnvSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
 )
@@ -39,12 +40,21 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Keep pytest isolated from deployment ``.env`` and secret files."""
+        """Keep pytest isolated from deployment ``.env`` and secret files.
+
+        Also wraps the env source so ``CORS_ALLOWED_ORIGINS`` arrives as
+        a raw comma-separated string instead of being decoded as JSON.
+        """
         if os.environ.get("PYTEST_CURRENT_TEST"):
             return init_settings, env_settings
+        wrapped_env = _CommaSeparatedEnvSource(
+            settings_cls=settings_cls,
+            case_sensitive=cls.model_config.get("case_sensitive", False),
+            env_prefix=cls.model_config.get("env_prefix", ""),
+        )
         return (
             init_settings,
-            env_settings,
+            wrapped_env,
             dotenv_settings,
             file_secret_settings,
         )
@@ -82,6 +92,14 @@ class Settings(BaseSettings):
     canvas_api_base_url: str = Field(
         ...,
         description="Base URL of the Canvas REST API (e.g. https://example.instructure.com/api/v1).",
+    )
+    google_client_id: str = Field(
+        ...,
+        description=(
+            "Google OAuth2 Client ID matching the one configured in your mobile "
+            "app's GoogleSignIn SDK; used as the audience claim when verifying "
+            "id_tokens at POST /auth/login."
+        ),
     )
 
     # --- Embedding model ---
@@ -142,6 +160,28 @@ class Settings(BaseSettings):
         description="When true, /query and other RAG routes return 503 (PR 6).",
     )
 
+    # --- Auth (POST /auth/login) ---
+    login_token_ttl_seconds: int = Field(
+        default=3600,
+        ge=60,
+        le=86400,
+        description=(
+            "Lifetime in seconds of backend JWTs issued by /auth/login "
+            "(default 1h, max 24h)."
+        ),
+    )
+    cors_allowed_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ],
+        description=(
+            "Origins allowed by CORS. Comma-separated in env. Empty list "
+            "disables CORS. Defaults cover local development."
+        ),
+    )
+
     @field_validator("tenant_token_key")
     @classmethod
     def _validate_fernet_key(cls, value: str) -> str:
@@ -168,6 +208,19 @@ class Settings(BaseSettings):
             )
         return value
 
+    @field_validator("cors_allowed_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, value: object) -> object:
+        """Parse comma-separated origins into a list.
+
+        Pydantic does not split strings into lists automatically, so an env
+        value like ``CORS_ALLOWED_ORIGINS=http://a,http://b`` arrives as a
+        single string. We split on commas, trim whitespace, and drop empties.
+        """
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
@@ -177,3 +230,23 @@ def get_settings() -> Settings:
     (``get_settings.cache_clear()``) before re-instantiating.
     """
     return Settings()  # type: ignore[call-arg]
+
+
+class _CommaSeparatedEnvSource(EnvSettingsSource):
+    """Env source that treats specific keys as raw strings (no JSON decode).
+
+    pydantic-settings tries to JSON-decode every value that comes from the
+    environment for ``list`` / ``tuple`` fields; for comma-separated
+    origins that produces a ``JSONDecodeError``. We override the decode
+    step only for the keys we know are comma-separated, leaving the rest
+    of the env parsing untouched.
+    """
+
+    _RAW_STRING_FIELDS: frozenset[str] = frozenset({"cors_allowed_origins"})
+
+    def prepare_field_value(self, field_name, field, field_value, value_is_complex):  # type: ignore[override]
+        if field_name in self._RAW_STRING_FIELDS and isinstance(field_value, str):
+            return field_value
+        return super().prepare_field_value(
+            field_name, field, field_value, value_is_complex
+        )

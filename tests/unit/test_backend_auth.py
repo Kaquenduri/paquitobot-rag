@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.security.backend_auth import (
     InvalidToken,
     constant_time_compare,
+    issue_backend_jwt,
     verify_backend_jwt,
 )
 
@@ -119,3 +120,42 @@ def test_invalid_token_error_message_is_scrubbed(
 
     assert "gAAAAA" not in str(exc.value)
     assert "Bearer" not in str(exc.value) or "***REDACTED***" in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# issue_backend_jwt (the inverse of verify_backend_jwt)
+# ---------------------------------------------------------------------------
+
+
+def test_issue_backend_jwt_round_trips_through_verify(
+    monkeypatch: pytest.MonkeyPatch, app_settings: dict[str, str]
+) -> None:
+    """A token signed by ``issue_backend_jwt`` MUST verify cleanly."""
+    secret = _settings_secret(monkeypatch, app_settings)
+
+    token, ttl = issue_backend_jwt("google-user-99")
+
+    assert ttl == get_settings().login_token_ttl_seconds
+    sub = verify_backend_jwt(token)
+    assert sub == "google-user-99"
+    # And the signature was made with the same secret the verifier checks.
+    decoded = jwt.decode(token, secret, algorithms=["HS256"])
+    assert decoded["iss"] == "paquitobot"
+    assert "iat" in decoded and "exp" in decoded
+
+
+def test_issue_backend_jwt_rejects_empty_sub() -> None:
+    with pytest.raises(InvalidToken):
+        issue_backend_jwt("")
+
+
+def test_issue_backend_jwt_expires_within_ttl_window(
+    monkeypatch: pytest.MonkeyPatch, app_settings: dict[str, str]
+) -> None:
+    _settings_secret(monkeypatch, app_settings)
+    before = int(time.time())
+    token, ttl = issue_backend_jwt("u")
+    decoded = jwt.decode(token, options={"verify_signature": False})
+    after = int(time.time())
+    assert before <= decoded["iat"] <= after
+    assert decoded["exp"] - decoded["iat"] == ttl

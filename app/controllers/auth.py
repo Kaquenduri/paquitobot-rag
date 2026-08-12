@@ -27,6 +27,8 @@ from fastapi import (
     status,
 )
 from fastapi.responses import JSONResponse
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token as google_id_token
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -34,7 +36,9 @@ from app.core.db import get_db_session
 from app.core.deps import verify_backend_jwt_dependency
 from app.core.errors import new_correlation_id
 from app.core.logging import get_correlation_id, get_logger
+from app.schemas.auth import LoginRequest, LoginResponse
 from app.schemas.errors import ErrorBody
+from app.security.backend_auth import issue_backend_jwt
 from app.security.token_crypto import TokenCipher
 from app.services.tenant_service import (
     TenantService,
@@ -42,7 +46,7 @@ from app.services.tenant_service import (
     should_use_session_store,
 )
 
-router = APIRouter(prefix="/auth/canvas", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def get_canvas_probe_transport() -> httpx.AsyncBaseTransport | None:
@@ -103,7 +107,7 @@ def _tenant_service_for_request(
 
 
 @router.post(
-    "/connect",
+    "/canvas/connect",
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
 )
@@ -175,6 +179,70 @@ async def connect_canvas(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post(
+    "/login",
+    response_model=LoginResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def login_with_google(
+    body: LoginRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> LoginResponse:
+    """Verify a Google Sign-In ``id_token`` and mint a backend JWT.
+
+    The mobile client obtains the ``id_token`` via the GoogleSignIn SDK
+    and posts it here. PaquitoBot never initiates the OAuth redirect:
+    that is the client's responsibility. We only verify the token
+    against Google's public keys and, on success, sign a backend JWT
+    keyed by ``BACKEND_SECRET`` with ``sub`` set to the Google account
+    identifier (``sub`` is stable per Google account across logins).
+
+    The endpoint is intentionally short — no session row, no audit
+    log beyond a structured event — so it can be retired cleanly when
+    the real auth provider lands. The ``GET /auth/canvas/connect``
+    flow, which derives ``tenant_id`` from the resulting JWT, is
+    unchanged.
+    """
+    try:
+        id_info = google_id_token.verify_oauth2_token(
+            body.id_token,
+            google_requests.Request(),
+            audience=settings.google_client_id,
+        )
+    except ValueError as exc:
+        get_logger("app.controllers.auth").warning(
+            "login_invalid_id_token",
+            error_class=exc.__class__.__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid id_token",
+        ) from exc
+
+    if not isinstance(id_info, dict):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid id_token payload",
+        )
+    sub = id_info.get("sub")
+    if not isinstance(sub, str) or not sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="id_token missing sub",
+        )
+    email_raw = id_info.get("email")
+    email: str | None = email_raw if isinstance(email_raw, str) and email_raw else None
+
+    token, ttl = issue_backend_jwt(sub, settings=settings)
+    get_logger("app.controllers.auth").info(
+        "login_issued",
+        sub=sub,
+        has_email=bool(email),
+        expires_in=ttl,
+    )
+    return LoginResponse(access_token=token, expires_in=ttl, sub=sub, email=email)
+
+
 __all__ = ["router"]
 
 
@@ -202,6 +270,7 @@ def _selftest() -> None:
         minimax_api_key="selftest-minimax-placeholder",
         ollama_host="http://127.0.0.1:1",
         canvas_api_base_url="https://canvas.invalid/api/v1",
+        google_client_id="selftest.apps.googleusercontent.com",
         scheduler_enabled=False,
     )
     engine = engine_for_url("sqlite:///:memory:")

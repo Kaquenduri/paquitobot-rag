@@ -67,6 +67,7 @@ Las agrupo por **para qué sirven** en vez de por orden alfabético:
 | **Proveedores externos** | `MINIMAX_API_KEY` | API key de MiniMax (endpoint Anthropic-compatible). Sirve para llamar al modelo que redacta las respuestas. |
 | | `OLLAMA_HOST` | URL base del servidor Ollama local. Sirve para generar embeddings. |
 | | `CANVAS_API_BASE_URL` | URL base de la API REST de Canvas. Ej: `https://tecsup.instructure.com/api/v1`. |
+| | `GOOGLE_CLIENT_ID` | Client ID de Google (audience para `POST /auth/login`). Debe matchear el configurado en el SDK móvil de GoogleSignIn. |
 | **Embeddings** | `OLLAMA_EMBEDDING_MODEL` | Modelo de Ollama (default `qwen3-embedding:8b`). Sirve para decidir qué embedding usar. |
 | | `OLLAMA_EMBED_DIM` | Dimensión del vector (default 1024). Sirve para hacer match con la columna PGVector. |
 | **Sync** | `SYNC_INTERVAL_SECONDS` | Cada cuánto corre el sync automático. Default 21600 (6h). |
@@ -78,6 +79,8 @@ Las agrupo por **para qué sirven** en vez de por orden alfabético:
 | | `SCHEDULER_ENABLED` | Activa APScheduler. |
 | | `DISABLE_RAG_ROUTES` | Cuando es true, `/query` y rutas RAG devuelven 503. Útil para debugging o para apagado de emergencia. |
 | | `OTEL_ENABLED` | Activa OpenTelemetry tracing. |
+| **Auth (login temporal)** | `LOGIN_TOKEN_TTL_SECONDS` | Vida útil del JWT emitido por `/auth/login` (default 3600s = 1h). |
+| | `CORS_ALLOWED_ORIGINS` | Lista comma-separated de orígenes permitidos. Vacío desactiva CORS. Default cubre `localhost:3000` para dev. |
 | | `HOST`, `PORT`, `RELOAD`, `LEGACY_MODE` | Leídos directamente en `main.py` (no son Settings). |
 
 **Conexión con el resto**: este módulo es el "interruptor general" del sistema. Cualquier pieza que quiera una variable de entorno pasa por acá.
@@ -91,6 +94,22 @@ Las agrupo por **para qué sirven** en vez de por orden alfabético:
 **Para qué existe**: cuando llega un request, le pega un `correlation_id` (UUID v4) y lo va pasando a todos los logs. Si falla algo, podés copiar ese ID y buscar todos los eventos asociados en la salida JSON. Si el cliente te manda su propio `X-Correlation-ID`, lo respeta (siempre que sea un UUID v4 válido).
 
 **Conexión**: el `correlation_id` fluye a `app/core/logging.py` (que lo añade a cada log) y a `app/core/errors.py` (que lo mete en el body de cada error).
+
+### Login con Google (temporal, removible)
+
+**Para qué existe**: hoy PaquitoBot no emite los JWTs que valida. Como dependencia temporal — pensada para removerse cuando se integre con el auth provider definitivo — hay un endpoint `POST /auth/login` que acepta un `id_token` de Google Sign-In y devuelve un JWT firmado por PaquitoBot (HS256, `BACKEND_SECRET`).
+
+**Cómo se usa**:
+1. El frontend móvil hace el redirect a Google con el SDK de GoogleSignIn (iOS/Android). Google devuelve al SDK un `id_token` firmado por Google.
+2. El frontend manda `POST /auth/login` con `{id_token: "eyJ..."}`.
+3. PaquitoBot valida la firma del `id_token` contra la public key de Google (cacheada), extrae `sub` y `email`, y firma un JWT propio con `iss="paquitobot"`, `iat`, `exp` (`LOGIN_TOKEN_TTL_SECONDS`, default 1h).
+4. El frontend recibe `{access_token, token_type, expires_in, sub, email}` y lo usa como `Authorization: Bearer` para los demás endpoints.
+
+**Por qué NO hay endpoint que redirige**: PaquitoBot es un backend API puro (no renderiza HTML). El redirect OAuth lo hace el SDK móvil del cliente; el backend solo verifica firmas y emite su propio JWT.
+
+**Por qué `google_client_id` vive en `Settings`**: es el `aud` que PaquitoBot exige en cada `id_token`. Tiene que matchear el `client_id` configurado en el SDK móvil (iOS: `GoogleService-Info.plist` → `CLIENT_ID`; Android: `google-services.json` → `client_info.mobilesdk_app_id`). Un solo `client_id` para empezar; se puede extender a múltiples audiences después.
+
+**Conexión**: `app/controllers/auth.py::login_with_google` (endpoint) → `google.oauth2.id_token.verify_oauth2_token` (validación) → `issue_backend_jwt()` (firma) → `verify_backend_jwt_dependency` (en `app/core/deps.py`, lo consume el resto de endpoints).
 
 ### 3.2 La cadena de auth — `app/core/deps.py`
 

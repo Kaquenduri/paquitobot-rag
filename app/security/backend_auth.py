@@ -13,10 +13,12 @@ constant-time.
 from __future__ import annotations
 
 import hmac
+import time
 from typing import Any
 
 import jwt
 
+from app.core.config import Settings, get_settings
 from app.core.errors import safe_message
 
 
@@ -102,4 +104,39 @@ def _get_backend_secret() -> str:
     return get_settings().backend_secret
 
 
-__all__ = ["InvalidToken", "constant_time_compare", "verify_backend_jwt"]
+def issue_backend_jwt(
+    sub: str,
+    *,
+    settings: Settings | None = None,
+) -> tuple[str, int]:
+    """Sign and return a fresh backend JWT for the given ``sub``.
+
+    Returns ``(token, expires_in_seconds)``. The token is HS256-signed
+    with :class:`Settings.backend_secret` and carries ``iat``/``exp``
+    claims derived from :class:`Settings.login_token_ttl_seconds`. The
+    ``iss`` claim is fixed to ``"paquitobot"`` so downstream verifiers
+    can distinguish these tokens from any other HS256 token the same
+    secret could sign.
+
+    The inverse of :func:`verify_backend_jwt`: whatever this function
+    puts in ``sub`` must be acceptable downstream. Today the chain
+    trusts ``sub`` as a stable user identifier; that contract is what
+    ``verify_backend_jwt`` already enforces, so this function does
+    not need extra validation beyond a non-empty string.
+    """
+    if not sub:
+        raise InvalidToken("issue_backend_jwt requires a non-empty sub")
+    cfg = settings or get_settings()
+    now = int(time.time())
+    ttl = cfg.login_token_ttl_seconds
+    payload: dict[str, Any] = {
+        "sub": sub,
+        "iat": now,
+        "exp": now + ttl,
+        "iss": "paquitobot",
+    }
+    token = jwt.encode(payload, cfg.backend_secret, algorithm="HS256")
+    return token, ttl
+
+
+__all__ = ["InvalidToken", "constant_time_compare", "issue_backend_jwt", "verify_backend_jwt"]

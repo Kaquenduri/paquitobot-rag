@@ -296,6 +296,7 @@ def _selftest() -> None:
         minimax_api_key="selftest-minimax-placeholder",
         ollama_host="http://127.0.0.1:1",
         canvas_api_base_url="https://canvas.invalid/api/v1",
+        google_client_id="selftest.apps.googleusercontent.com",
         scheduler_enabled=False,
     )
     engine = engine_for_url("sqlite:///:memory:")

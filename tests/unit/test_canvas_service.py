@@ -44,6 +44,7 @@ def _settings() -> Any:
         minimax_api_key="test",
         ollama_host="http://127.0.0.1:1",
         canvas_api_base_url="https://canvas.test/api/v1",
+        google_client_id="test-only.apps.googleusercontent.com",
         manual_sync_min_interval_seconds=60,
     )
 

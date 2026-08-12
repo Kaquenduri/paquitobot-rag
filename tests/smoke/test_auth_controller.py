@@ -162,3 +162,123 @@ def test_connect_401_when_backend_jwt_missing(
     )
 
     assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# /auth/login (Google id_token exchange -> backend JWT)
+# ---------------------------------------------------------------------------
+
+
+def _fake_id_token(sub: str = "google-user-42", email: str | None = "alice@example.com") -> str:
+    """Return a syntactically valid (but unsigned) JWT for body validation."""
+    payload: dict[str, object] = {"sub": sub}
+    if email is not None:
+        payload["email"] = email
+    return jwt.encode(payload, "irrelevant", algorithm="HS256")
+
+
+def test_login_issues_backend_jwt_when_id_token_is_valid(
+    monkeypatch: pytest.MonkeyPatch, app_settings: dict[str, str]
+) -> None:
+    secret, _ = _setup(monkeypatch, app_settings)
+
+    def fake_verify(token: str, request: object, audience: str) -> dict[str, str]:
+        assert audience == app_settings["GOOGLE_CLIENT_ID"]
+        return {"sub": "google-user-42", "email": "alice@example.com"}
+
+    monkeypatch.setattr(
+        auth_module.google_id_token,
+        "verify_oauth2_token",
+        fake_verify,
+    )
+
+    response = TestClient(_build_app()).post(
+        "/auth/login",
+        json={"id_token": _fake_id_token()},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["token_type"] == "bearer"
+    assert body["sub"] == "google-user-42"
+    assert body["email"] == "alice@example.com"
+    # The returned token is a PaquitoBot JWT, signed with BACKEND_SECRET.
+    decoded = jwt.decode(
+        body["access_token"],
+        secret,
+        algorithms=["HS256"],
+        options={"require": ["sub", "iat", "exp"]},
+    )
+    assert decoded["sub"] == "google-user-42"
+    assert decoded["iss"] == "paquitobot"
+    # expires_in is in (0, login_token_ttl_seconds].
+    assert 1 <= body["expires_in"] <= 86400
+
+
+def test_login_returns_401_when_id_token_is_invalid(
+    monkeypatch: pytest.MonkeyPatch, app_settings: dict[str, str]
+) -> None:
+    _setup(monkeypatch, app_settings)
+
+    def fake_verify(token: str, request: object, audience: str) -> dict[str, str]:
+        raise ValueError("Token expired")
+
+    monkeypatch.setattr(
+        auth_module.google_id_token,
+        "verify_oauth2_token",
+        fake_verify,
+    )
+
+    response = TestClient(_build_app()).post(
+        "/auth/login",
+        json={"id_token": _fake_id_token()},
+    )
+
+    assert response.status_code == 401
+    assert "id_token" in response.text
+
+
+def test_login_returns_401_when_id_token_missing_sub(
+    monkeypatch: pytest.MonkeyPatch, app_settings: dict[str, str]
+) -> None:
+    _setup(monkeypatch, app_settings)
+
+    def fake_verify(token: str, request: object, audience: str) -> dict[str, object]:
+        return {"email": "no-sub@example.com"}  # type: ignore[return-value]
+
+    monkeypatch.setattr(
+        auth_module.google_id_token,
+        "verify_oauth2_token",
+        fake_verify,
+    )
+
+    response = TestClient(_build_app()).post(
+        "/auth/login",
+        json={"id_token": _fake_id_token()},
+    )
+
+    assert response.status_code == 401
+    assert "sub" in response.text
+
+
+def test_login_returns_422_when_id_token_missing(
+    monkeypatch: pytest.MonkeyPatch, app_settings: dict[str, str]
+) -> None:
+    _setup(monkeypatch, app_settings)
+
+    response = TestClient(_build_app()).post("/auth/login", json={})
+
+    assert response.status_code == 422
+
+
+def test_login_returns_422_on_extra_field(
+    monkeypatch: pytest.MonkeyPatch, app_settings: dict[str, str]
+) -> None:
+    _setup(monkeypatch, app_settings)
+
+    response = TestClient(_build_app()).post(
+        "/auth/login",
+        json={"id_token": _fake_id_token(), "tenant_id": "evil-uuid"},
+    )
+
+    assert response.status_code == 422
