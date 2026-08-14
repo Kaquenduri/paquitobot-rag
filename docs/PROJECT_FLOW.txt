@@ -1,0 +1,427 @@
+# Primer RAG — Mapa del backend
+
+Documento de orientacion para quien va a leer o modificar el backend de PaquitoBot.
+El cliente Android vive en `paquitobot-app/` (Kotlin + Compose) y consume este servicio
+por HTTP; esta guia se centra solo en el monolito FastAPI de este repositorio.
+
+Los cuatro diagramas de abajo muestran, en orden, como esta armado el sistema, como
+se responde una pregunta del estudiante, como se sincroniza con Canvas y como se
+modelan los datos. Todos los identificadores que aparecen en los nodos (modulos,
+clases, funciones) son nombres reales del codigo fuente.
+
+---
+
+# 1. Arquitectura por capas
+
+Vista esttica del monolito. Cada bloque agrupa un paquete del repositorio y las
+flechas muestran quien importa a quien (en el sentido del flujo de una peticion
+entrante). La capa HTTP arriba recibe el request, las dependencias Core estan a
+la izquierda porque son transverse, y la base de datos abajo cierra el sistema.
+
+```mermaid
+flowchart TB
+  subgraph HTTP["HTTP layer - app/main.py"]
+    direction TB
+    Main["create_app + lifespan"]
+    MW["CorrelationIdMiddleware"]
+    Main --> MW
+  end
+
+  subgraph Controllers["Controllers - app/controllers"]
+    direction TB
+    CHealth["health.py - GET /healthz"]
+    CAuth["auth.py - POST /auth/canvas/connect, /auth/login"]
+    CQuery["query.py - POST /query"]
+    CSync["sync.py - POST /sync"]
+  end
+  MW --> Controllers
+
+  subgraph Services["Services - app/services"]
+    direction TB
+    RagSvc["RAGService.answer"]
+    RagFactory["rag_factory.build_rag_service"]
+    CanvasSvc["CanvasService - manual sync"]
+    TenantSvc["tenant_service - tenant store + token vault"]
+  end
+
+  subgraph RAG["RAG layer - app/rag"]
+    direction TB
+    Agent["agent.run_sql_agent - LangChain loop"]
+    RagRouter["RAGRouter - deterministic route pick"]
+    VecStore["VectorStore - PGVector via Ollama embeddings"]
+  end
+
+  subgraph T2S["text_to_sql"]
+    direction TB
+    Tools["TOOL_CATALOG - 9 named tools, extra=forbid"]
+    AllowList["ALLOW_LIST - registered SQL templates"]
+    TplSel["template_selector - picks one template + slots"]
+    Executor["executor.execute_readonly - SET LOCAL read-only"]
+    Period["period.current_academic_period"]
+  end
+
+  subgraph Canvas["Canvas HTTP - app/canvas"]
+    direction TB
+    Client["client.CanvasClient - httpx GET-only"]
+    DTO["dto - Pydantic DTOs + strip_peer_data"]
+    Pagination["pagination.paginate - Link header follower"]
+  end
+
+  subgraph Sync["Sync - app/sync"]
+    direction TB
+    Scheduler["scheduler.SyncScheduler - APScheduler cron */6h"]
+    Pipeline["pipeline.sync_tenant - one tx per tenant"]
+    Lock["lock - pg_try_advisory_xact_lock + SQLite fallback"]
+    WM["watermark - sync_state last_watermark"]
+  end
+
+  subgraph Repo["Persistence - app/repositories + app/models"]
+    direction TB
+    Upsert["upsert.upsert_by_canvas_id / soft_delete_if_inactive"]
+    Models["SQLAlchemy declarative - Tenant, CanvasCredential, User, Course, Enrollment, Assignment, Submission, SyncState"]
+  end
+
+  subgraph DB["Storage"]
+    direction TB
+    Postgres["Postgres - Supabase - prod"]
+    SQLite["SQLite in-memory - tests bypass"]
+  end
+
+  subgraph Core["Core - app/core + app/security"]
+    direction TB
+    Cfg["config.Settings - Pydantic BaseSettings"]
+    Log["logging - structlog + correlation_id ContextVar"]
+    DBFactory["db.make_engine_from_settings / session_factory_for"]
+    Sec["security - Fernet TokenCipher + JWT verify_backend_jwt"]
+  end
+
+  CQuery --> RagSvc
+  CSync --> CanvasSvc
+  CAuth --> TenantSvc
+  CAuth --> Sec
+  CHealth --> RagSvc
+
+  RagFactory --> RagSvc
+  RagSvc --> RagRouter
+  RagSvc --> Agent
+  RagSvc --> VecStore
+  RagSvc --> Executor
+
+  Agent --> Tools
+  Agent --> Executor
+  TplSel --> AllowList
+  Executor --> AllowList
+  Tools -. "registered templates" .-> AllowList
+  Period --> TplSel
+
+  CanvasSvc --> Pipeline
+  Scheduler --> Pipeline
+  Pipeline --> Client
+  Pipeline --> DTO
+  Pipeline --> Pagination
+  Pipeline --> Upsert
+  Pipeline --> WM
+  Pipeline --> Lock
+
+  Upsert --> Models
+  Executor --> Models
+  TplSel --> Executor
+
+  RagFactory --> DBFactory
+  RagFactory --> Sec
+  RagFactory --> Cfg
+  Scheduler --> DBFactory
+  Scheduler --> TenantSvc
+
+  Models --> DB
+  DBFactory --> DB
+
+  Controllers --> Log
+  HTTP --> Log
+  Controllers --> Sec
+  Controllers --> DBFactory
+```
+
+El grafo deja ver tres lineas claras: la peticion HTTP baja por Controladores
+hasta la base pasando por RAGService + Agent + Executor; la sincronizacion
+periódica con Canvas vive en su propio carril (scheduler + pipeline + lock +
+watermark) y nunca toca la ruta de preguntas; y el nucleo transversal
+(config, logging, db factory, security) sirve a ambos carriles sin acoplarse
+a ninguno.
+
+---
+
+# 2. Flujo de una pregunta del usuario (POST /query)
+
+Secuencia de extremo a extremo para una pregunta del estudiante. La parte
+critica es que el `tenant_id` lo resuelve el backend a partir del JWT — el
+cliente nunca lo envia — y que el agente solo puede elegir herramientas de un
+catalogo cerrado cuyas ranuras (`slots`) las llena el servidor.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Cliente Android
+    participant MW as CorrelationIdMiddleware
+    participant D as Dependency chain
+    participant Q as query.post_query
+    participant R as RAGService
+    participant A as run_sql_agent (LangChain)
+    participant L as LLM (MiniMax / Anthropic-compatible)
+    participant RT as _TenantToolRuntime
+    participant X as executor.execute_readonly
+    participant DB as Postgres (RLS via tenant_id)
+
+    Note over C,DB: tenant_id NUNCA viaja en el body; extra="forbid" lo rechaza con 422
+
+    C->>MW: POST /query  Authorization: Bearer <jwt>
+    MW->>MW: genera o acepta X-Correlation-ID y lo bindea al ContextVar
+    MW->>D: pasa al chain: verify_backend_jwt_dependency -> require_tenant -> require_tenant_token
+    D->>D: PyJWT HS256 con BACKEND_SECRET (hmac.compare_digest, constant time)
+    D->>D: TokenCipher descifra Canvas token con TENANT_TOKEN_KEY (Fernet)
+    D->>Q: tenant_context = (tenant_id, canvas_token)
+
+    Q->>Q: valida QueryRequest (extra=forbid); 503 si DISABLE_RAG_ROUTES
+    Q->>Q: detect_language(question) o usa payload.language
+    Q->>R: RAGService.answer(question, tenant_id, language)
+
+    R->>R: provider_health() refresca el flag de embeddings
+    R->>R: RAGRouter.route() -> "relational" / "semantic" / "hybrid" / "unsupported"
+    R->>A: _agent_answer(question, tenant_id)
+
+    A->>L: bind_tools(tool_specs) + system prompt con contexto temporal
+    L-->>A: AIMessage con tool_calls (p.ej. get_user_courses_current_term)
+
+    loop Hasta MAX_TOOL_STEPS=4
+      A->>A: _validate_call(name, args, runtime)
+      Note over A: rechaza tenant_id/user_id en args,<br/>valida UUIDs,<br/>grounding contra known_ids(slot)
+      A->>RT: runtime.execute(tool, args)
+      RT->>RT: inyecta tenant_id y, si aplica, user_id derivado de tenant_id
+      RT->>X: execute_readonly(sql_rendida, params)
+      X->>DB: SET LOCAL default_transaction_read_only + statement_timeout + app.tenant_id
+      X->>DB: SELECT ... WHERE tenant_id = :tenant_id AND deleted_at IS NULL
+      DB-->>X: rows (max 200; el agente recorta a 60)
+      X-->>RT: rows
+      RT-->>A: rows -> ToolMessage JSON
+      A->>L: siguiente turno con resultados
+      L-->>A: o mas tool_calls, o AIMessage final
+    end
+
+    Note over A: Si se acaban los pasos, un turno final sin herramientas<br/>fuerza una respuesta con lo ya juntado
+    A-->>R: AgentResult(answer, steps, exhausted)
+
+    R-->>Q: {answer, lang, route}
+    Q-->>MW: QueryResponse + X-Correlation-ID en el header
+    MW-->>C: 200 OK {answer, lang, route, correlation_id}
+```
+
+Tres garantias de seguridad que este flujo hace explicitas: el `tenant_id` lo
+fija el servidor (no el body), el modelo solo conoce nueve herramientas con
+esquema cerrado y `extra=forbid` (no puede inyectar SQL ni slots del servidor),
+y cada consulta Postgres corre dentro de una transaccion que activa
+`default_transaction_read_only` y `statement_timeout` antes del `SELECT`.
+
+---
+
+# 3. Sincronizacion periodica con Canvas (flujo interno)
+
+La sincronizacion corre cada 6 horas en el mismo proceso via APScheduler. El
+diagrama muestra el camino feliz completo: desde el cron tick hasta el commit
+de la transaccion unica por tenant, con la cancelacion limpia cuando el lock
+ya esta tomado por otro worker.
+
+```mermaid
+flowchart TB
+  Cron["APScheduler cron - hour='*/6' UTC"] --> Tick["SyncScheduler._tick"]
+  Tick --> List["_list_tenant_ids - SELECT DISTINCT tenant_id FROM canvas_credentials"]
+  List --> Gather["asyncio.gather(_dispatch_with_jitter)"]
+  Gather --> Jitter["delay = uniform(0, sync_jitter_seconds) - evita lock-step"]
+  Jitter --> Pool["_WorkerPool semaphore - max 4 tenants concurrentes"]
+  Pool --> Run["_run_for_tenant(tenant_id)"]
+
+  Run --> Token["tenant_service.get_decrypted_canvas_token - Fernet decrypt"]
+  Token --> Begin["session.begin() abre transaccion"]
+  Begin --> TryLock["try_acquire_sync_lock"]
+
+  TryLock -->|"Postgres"| PgLock["SELECT pg_try_advisory_xact_lock(hashtext:tenant_id)"]
+  TryLock -->|"SQLite (tests)"| SqlLock["threading.Lock keyed by tenant_id"]
+
+  PgLock --> LockCheck{lock acquired?}
+  SqlLock --> LockCheck
+
+  LockCheck -->|no| LogBusy["log sync_scheduler_lock_busy - el tick sigue con el siguiente tenant"]
+  LogBusy --> End1([exit sin tocar la DB])
+
+  LockCheck -->|si| Sync["sync_tenant(session, tenant_id, client, lock_id=str(tenant_id))"]
+
+  subgraph Tx["Una sola transaccion por tenant - sync_tenant"]
+    direction TB
+    WRead["read_watermark - sync_state row para (tenant_id, 'users')"]
+    User["GET /users/self - upsert User (self only)"]
+    Fav["GET /users/self/favorites/courses?include=term&updated_after=watermark"]
+    PagFav["paginate - Link header; default per_page=100"]
+    UpsertC["upsert_by_canvas_id Course - guarda term_name"]
+    SoftC["soft_delete_if_inactive si workflow_state in deleted/inactive/completed/concluded/unpublished"]
+    Enroll["procesa enrollments embebidos - strip_peer_data descarta los de pares"]
+    Assn["para cada course_id: GET /courses/id/assignments?include=submission,score_statistics&updated_after=watermark"]
+    UpsertA["upsert_by_canvas_id Assignment + Submission"]
+    SoftA["soft_delete_if_inactive"]
+    Advance["advance_watermark(session, 'users', run_at, status=ok) - mismo tx que los upserts"]
+  end
+
+  Sync --> WRead
+  WRead --> User
+  User --> Fav
+  Fav --> PagFav
+  PagFav --> UpsertC
+  UpsertC --> SoftC
+  SoftC --> Enroll
+  Enroll --> Assn
+  Assn --> UpsertA
+  UpsertA --> SoftA
+  SoftA --> Advance
+
+  Advance --> Commit["commit de la transaccion - PG libera el advisory lock automaticamente"]
+  Commit --> End2([run termina])
+
+  Sync -.->|Canvas 5xx / 4xx / drift| Fail["_finish_failure - rollback de upserts, escribe sync_state.last_status=failed en tx aparte, NO avanza watermark"]
+  Fail --> End3([run termina con status failed])
+```
+
+Cuatro invariantes que el diagrama deja ver: el lock por tenant y los upserts
+comparten transaccion (no se puede liberar exclusion antes de commit, ni
+publicar un watermark parcial), el cursor `updated_after` se pasa en cada
+llamada a Canvas, el soft-delete se aplica cuando `workflow_state` cae en un
+conjunto fijo de estados terminales, y ante cualquier fallo solo se persiste
+`last_status=failed` — el watermark durable (`last_watermark`) no se mueve.
+
+---
+
+# 4. Modelo de datos / esquema relacional
+
+Entidades declaradas en `app/models/__init__.py`. Toda tabla de dominio hereda
+de `TenantMixin` y lleva `tenant_id` como primera columna no-PK; la mayoria
+de las FKs son `SET NULL` para que un borrado logico no rompa joins futuros.
+El termino `term_name` en `courses` se agrego en la migracion
+`0002_add_course_term_name` para soportar la herramienta
+`get_user_courses_current_term` del agente.
+
+```mermaid
+erDiagram
+    tenants ||--|| canvas_credentials : "stores encrypted token"
+    tenants ||--o{ users : "scopes"
+    tenants ||--o{ courses : "scopes"
+    tenants ||--o{ enrollments : "scopes"
+    tenants ||--o{ assignments : "scopes"
+    tenants ||--o{ submissions : "scopes"
+    tenants ||--o{ sync_state : "tracks watermark"
+
+    courses ||--o{ enrollments : "contains"
+    users   ||--o{ enrollments : "enrolled_as"
+    courses ||--o{ assignments : "contains"
+    assignments ||--o{ submissions : "graded_by"
+    users   ||--o{ submissions : "submits"
+
+    tenants {
+        uuid    id PK
+        string  backend_user_id  "unique - maps to JWT sub"
+        datetime created_at
+        datetime updated_at
+    }
+
+    canvas_credentials {
+        int     id PK
+        uuid    tenant_id UK "FK -> tenants.id, unique"
+        bytes   ciphertext "Fernet - AES-128-CBC + HMAC-SHA256"
+        int     key_version
+        datetime created_at
+        datetime rotated_at "nullable"
+    }
+
+    users {
+        uuid    id PK
+        uuid    tenant_id "FK -> tenants.id, indexed"
+        int     canvas_id "UNIQUE(tenant_id, canvas_id)"
+        string  name
+        string  short_name
+        string  email
+        string  locale
+    }
+
+    courses {
+        uuid    id PK
+        uuid    tenant_id "FK -> tenants.id, indexed"
+        int     canvas_id "UNIQUE(tenant_id, canvas_id)"
+        string  name
+        string  course_code
+        int     enrollment_term_id
+        string  workflow_state
+        string  term_name "added in 0002 - indexed, LIKE by agent"
+    }
+
+    enrollments {
+        uuid    id PK
+        uuid    tenant_id "FK -> tenants.id, indexed"
+        int     canvas_id "UNIQUE(tenant_id, canvas_id)"
+        uuid    course_id "FK -> courses.id, SET NULL"
+        uuid    user_id  "FK -> users.id, SET NULL"
+        string  role
+        string  enrollment_state
+    }
+
+    assignments {
+        uuid    id PK
+        uuid    tenant_id "FK -> tenants.id, indexed"
+        int     canvas_id "UNIQUE(tenant_id, canvas_id)"
+        uuid    course_id "FK -> courses.id, SET NULL"
+        string  name
+        float   points_possible
+        datetime due_at
+        datetime lock_at
+        datetime unlock_at
+        string  workflow_state
+        jsonb   submission_types
+        jsonb   score_statistics
+    }
+
+    submissions {
+        uuid    id PK
+        uuid    tenant_id "FK -> tenants.id, indexed"
+        int     canvas_id "UNIQUE(tenant_id, canvas_id)"
+        uuid    assignment_id "FK -> assignments.id, SET NULL"
+        uuid    user_id       "FK -> users.id, SET NULL"
+        float   score
+        string  grade
+        boolean late
+        boolean missing
+        boolean excused
+        datetime submitted_at
+        datetime graded_at
+        datetime posted_at
+    }
+
+    sync_state {
+        int     id PK
+        uuid    tenant_id "FK -> tenants.id, indexed"
+        string  table_name "UNIQUE(tenant_id, table_name)"
+        datetime last_watermark "durable last-success cursor"
+        datetime last_run_at    "may be overwritten by failed attempt"
+        string  last_status "ok | failed | locked"
+        string  last_error_class "nullable - canvas_unavailable / schema_drift / ..."
+    }
+```
+
+Dos cosas para leer de un vistazo: el aislamiento multi-tenant esta sostenido
+por la columna `tenant_id` presente en todas las tablas de dominio y por la
+constraint `UNIQUE(tenant_id, canvas_id)` (Canvas opera con `BIGINT` globales;
+PaquitoBot los vuelve locales por tenant), y `sync_state` vive fuera de
+`TenantMixin` precisamente porque no necesita `deleted_at`: una fila de sync
+o existe o no existe, no se soft-deletea.
+
+---
+
+Como leer este documento: arrancar por el diagrama 1 para entender que pieza
+del repositorio hace que, saltar al diagrama 2 cuando se va a tocar el flujo
+de `/query` o el catalogo de herramientas, abrir el diagrama 3 antes de
+modificar la sincronizacion con Canvas o el watermark, y terminar en el
+diagrama 4 cuando el cambio toca una migracion de Alembic o un JOIN nuevo.
