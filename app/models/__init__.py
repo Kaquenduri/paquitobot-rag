@@ -288,6 +288,9 @@ class Course(TenantMixin, Base):
     time_zone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     enrollments_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     calendar_ics: Mapped[str | None] = mapped_column(Text, nullable=True)
+    term_name: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, index=True
+    )
 
 
 class Enrollment(TenantMixin, Base):

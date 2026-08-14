@@ -183,3 +183,55 @@ def test_strip_peer_data_discards_peer_enrollments_nested_in_course() -> None:
 
     assert isinstance(stripped, CourseDTO)
     assert [enrollment.user_id for enrollment in stripped.enrollments or []] == [101]
+
+
+def test_course_dto_parses_term_object_from_canvas_payload() -> None:
+    course = CourseDTO.model_validate(
+        {
+            "id": 202,
+            "name": "Cálculo I",
+            "term": {
+                "id": 17,
+                "name": "PFR A 2026 - 2",
+                "start_at": "2026-08-01T00:00:00Z",
+                "end_at": "2026-12-31T23:59:59Z",
+                "sis_term_id": 20262,
+            },
+        }
+    )
+
+    assert course.term is not None
+    assert course.term.id == 17
+    assert course.term.name == "PFR A 2026 - 2"
+    assert course.term.start_at == datetime(2026, 8, 1, tzinfo=UTC)
+    assert course.term.sis_term_id == 20262
+
+    payload = course.to_payload()
+    assert payload["term_name"] == "PFR A 2026 - 2"
+    # The nested ``term`` object never crosses the persistence boundary
+    # directly — only its flat ``name`` does.
+    assert "term" not in payload
+
+
+def test_course_dto_term_name_is_absent_when_term_is_missing() -> None:
+    course = CourseDTO.model_validate({"id": 202, "name": "Sin término"})
+
+    assert course.term is None
+    assert "term_name" not in course.to_payload()
+
+
+def test_course_dto_term_keeps_metadata_through_strip_peer_data() -> None:
+    course = CourseDTO.model_validate(
+        {
+            "id": 202,
+            "enrollments": [{"id": 303, "user_id": 101, "role": "StudentEnrollment"}],
+            "term": {"id": 17, "name": "PFR A 2026 - 2"},
+        }
+    )
+
+    stripped = strip_peer_data(course, tenant_user_id=101)
+
+    assert isinstance(stripped, CourseDTO)
+    assert stripped.term is not None
+    assert stripped.term.name == "PFR A 2026 - 2"
+    assert stripped.to_payload()["term_name"] == "PFR A 2026 - 2"

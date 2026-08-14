@@ -13,17 +13,26 @@ falls back to the always-safe ``assignments_due_between`` template.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
 
 from app.core.logging import get_logger
 from app.text_to_sql.allow_list import ALLOW_LIST
 
+if TYPE_CHECKING:
+    from app.rag.agent import SQLToolRuntime
+
 logger = get_logger("app.text_to_sql.template_selector")
 
 FALLBACK_TEMPLATE = "assignments_due_between"
 FALLBACK_SLOTS: dict[str, Any] = {"start_at": "1970-01-01", "end_at": "2099-12-31"}
+
+# Token used as the ``term_pattern`` slot when the current date is
+# out-of-cycle (January or February). It is an impossible LIKE pattern —
+# nothing in the ``term_name`` column will ever match it — so the SQL
+# safely returns zero rows instead of leaking a stale previous period.
+NO_MATCH_PATTERN = "__NO_MATCH__"
 
 
 class TemplateSelection(BaseModel):
@@ -153,6 +162,29 @@ def select_template(
     if selection.course_id in course_ids:
         return template, {"course_id": selection.course_id}
     return FALLBACK_TEMPLATE, dict(FALLBACK_SLOTS)
+
+
+def current_term_slots(
+    runtime: SQLToolRuntime,
+    period: tuple[int, int] | None,
+) -> dict[str, object]:
+    """Build the slot dict for ``get_user_courses_current_term``.
+
+    ``period`` is the result of :func:`app.text_to_sql.period.current_academic_period`
+    for today's date. When ``None`` (January or February), the function
+    substitutes :data:`NO_MATCH_PATTERN` for ``term_pattern`` so the SQL
+    matches zero rows — a deliberate "empty by construction" outcome
+    rather than a fallback to the previous academic period.
+
+    ``runtime.tenant_id`` is the canonical source of truth for the slot;
+    the function does not consult any other argument.
+    """
+    if period is None:
+        term_pattern = NO_MATCH_PATTERN
+    else:
+        year, period_num = period
+        term_pattern = f"%{year} - {period_num}"
+    return {"tenant_id": str(runtime.tenant_id), "term_pattern": term_pattern}
 
 
 def _selftest() -> None:

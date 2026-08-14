@@ -446,7 +446,11 @@ async def _sync_favorite_courses(
 ) -> tuple[list[int], int]:
     course_ids: list[int] = []
     embedded_enrollments = 0
-    params = _updated_after_params(updated_after)
+    # Always request ``include[]=term`` so the persisted ``term_name`` stays
+    # current even when the watermark narrows the page; ``updated_after``
+    # keeps the delta cursor working as before.
+    params: dict[str, Any] = {"include[]": "term"}
+    params.update(_updated_after_params(updated_after))
 
     async for item in _paginate_items(
         client,

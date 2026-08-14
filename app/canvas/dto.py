@@ -66,6 +66,14 @@ class EnrollmentDTO(CanvasDTO):
         )
 
 
+class TermDTO(CanvasDTO):
+    id: int | None = None
+    name: str | None = None
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+    sis_term_id: int | None = None
+
+
 class CourseDTO(CanvasDTO):
     id: int
     name: str | None = None
@@ -85,15 +93,18 @@ class CourseDTO(CanvasDTO):
     time_zone: str | None = None
     storage_quota_mb: int | None = None
     enrollments_count: int | None = None
+    term: TermDTO | None = None
 
     def to_payload(self) -> dict[str, Any]:
         """Return repository fields and map Canvas calendar ICS to its column."""
         data = self.model_dump(
             exclude_none=True,
-            exclude={"id", "enrollments", "calendar"},
+            exclude={"id", "enrollments", "calendar", "term"},
         )
         if self.calendar and self.calendar.get("ics") is not None:
             data["calendar_ics"] = self.calendar["ics"]
+        if self.term and self.term.name is not None:
+            data["term_name"] = self.term.name
         return data
 
 
@@ -319,6 +330,7 @@ __all__ = [
     "LockInfoDTO",
     "ScoreStatisticsDTO",
     "SubmissionDTO",
+    "TermDTO",
     "UserDTO",
     "parse_dto",
     "parse_many",

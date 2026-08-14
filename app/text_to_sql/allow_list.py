@@ -211,6 +211,15 @@ def _register_agent_tools(registry: AllowList) -> None:
         "WHERE tenant_id = {{tenant_id}} AND id = {{course_id}} AND deleted_at IS NULL",
         slots={"tenant_id", "course_id"},
     )
+    registry.register(
+        "get_user_courses_current_term",
+        "SELECT id, name, course_code, term_name "
+        "FROM courses "
+        "WHERE tenant_id = {{tenant_id}} AND deleted_at IS NULL "
+        "AND term_name LIKE :term_pattern "
+        "ORDER BY name LIMIT 100",
+        slots={"tenant_id", "term_pattern"},
+    )
 
 
 ALLOW_LIST = default_allow_list()
@@ -240,6 +249,7 @@ def _selftest() -> None:
         "get_user_missing_submissions": {"user_id"},
         "get_user_late_submissions": {"user_id"},
         "get_course_details": {"course_id"},
+        "get_user_courses_current_term": set(),
     }
     for name, extra in agent_slots.items():
         slots = {"tenant_id": "t", **dict.fromkeys(extra, "x")}

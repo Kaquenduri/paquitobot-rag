@@ -18,6 +18,7 @@ is initialised on the first request that needs it and cached afterwards.
 from __future__ import annotations
 
 import threading
+from datetime import UTC, datetime
 from typing import Any, ClassVar
 
 from app.core.config import Settings
@@ -29,7 +30,13 @@ from app.rag.vector_store import VectorStore
 from app.services.rag_service import RAGService
 from app.text_to_sql.allow_list import ALLOW_LIST
 from app.text_to_sql.executor import execute_readonly
-from app.text_to_sql.template_selector import FALLBACK_SLOTS, FALLBACK_TEMPLATE, select_template
+from app.text_to_sql.period import current_academic_period
+from app.text_to_sql.template_selector import (
+    FALLBACK_SLOTS,
+    FALLBACK_TEMPLATE,
+    current_term_slots,
+    select_template,
+)
 from app.text_to_sql.tools import SQLTool
 
 logger = get_logger("app.services.rag_service_factory")
@@ -223,6 +230,22 @@ class _TenantToolRuntime:
 
     def execute(self, tool: SQLTool, args: dict[str, Any]) -> list[dict[str, Any]]:
         slots = dict(args)
+        # ``get_user_courses_current_term`` derives its only non-tenant
+        # slot (``term_pattern``) from the current academic period.
+        # Computing it here, in the per-request runtime, keeps the value
+        # deterministic against ``date.today()`` even when the same
+        # runtime instance is reused across calls.
+        if tool.name == "get_user_courses_current_term":
+            period = current_academic_period(datetime.now(UTC).date())
+            term_slots = current_term_slots(
+                SQLToolRuntime(
+                    execute=self.execute,
+                    known_ids=self.known_ids,
+                    tenant_id=self._tenant_id,
+                ),
+                period,
+            )
+            slots["term_pattern"] = term_slots["term_pattern"]
         if "user_id" in tool.server_slots:
             user_id = self.self_user_id()
             if user_id is None:
@@ -237,7 +260,11 @@ class _TenantToolRuntime:
         return self._id_cache[slot]
 
     def as_runtime(self) -> SQLToolRuntime:
-        return SQLToolRuntime(execute=self.execute, known_ids=self.known_ids)
+        return SQLToolRuntime(
+            execute=self.execute,
+            known_ids=self.known_ids,
+            tenant_id=self._tenant_id,
+        )
 
 
 def _build_sql_agent(settings: Settings, db_session_factory: Any, llm_dep: Any):

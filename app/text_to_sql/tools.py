@@ -188,6 +188,19 @@ _TOOL_SPECS: tuple[tuple[str, str, type[BaseModel], frozenset[str]], ...] = (
         CourseArgs,
         frozenset({"tenant_id"}),
     ),
+    (
+        "get_user_courses_current_term",
+        (
+            "Devuelve los cursos del usuario en el período académico actual "
+            "(calculado a partir de la fecha del servidor: período 1 = "
+            "marzo–julio, período 2 = agosto–diciembre). Úsalo cuando el "
+            "estudiante pregunte por los cursos 'de este período', 'del "
+            "semestre actual' o 'que estoy cursando ahora'. En enero y "
+            "febrero no hay período activo y el resultado es vacío."
+        ),
+        NoArgs,
+        frozenset({"tenant_id", "term_pattern"}),
+    ),
 )
 
 
@@ -278,7 +291,7 @@ __all__ = [
 
 
 def _selftest() -> None:
-    assert len(TOOL_CATALOG) == 8, TOOL_NAMES
+    assert len(TOOL_CATALOG) == 9, TOOL_NAMES
     # No tool may expose a server-owned slot as a model argument.
     for tool in TOOL_CATALOG.values():
         assert not (tool.model_slots & SERVER_SLOTS), tool.name
@@ -304,10 +317,11 @@ def _selftest() -> None:
         raise AssertionError("NoArgs must reject any argument")
 
     specs = tool_specs()
-    assert len(specs) == 8
+    assert len(specs) == 9
     by_name = {s["name"]: s for s in specs}
     assert by_name["get_user_courses"]["parameters"]["properties"] == {}
     assert by_name["get_course_details"]["parameters"]["required"] == ["course_id"]
+    assert by_name["get_user_courses_current_term"]["parameters"]["properties"] == {}
     # No declaration may advertise a free-text SQL argument.
     for spec in specs:
         props = spec["parameters"]["properties"]  # type: ignore[index]

@@ -29,9 +29,11 @@ import json
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 from typing import Any
 
 from app.core.logging import get_logger
+from app.text_to_sql.period import current_academic_period
 from app.text_to_sql.tools import SERVER_SLOTS, TOOL_CATALOG, SQLTool, tool_specs
 
 logger = get_logger("app.rag.agent")
@@ -45,15 +47,17 @@ MAX_TOOL_STEPS = 4
 # this second cap keeps a wide gradebook from crowding out the question.
 MAX_ROWS_TO_MODEL = 60
 
-SYSTEM_PROMPT = (
+SYSTEM_PROMPT_BASE = (
     "You are PaquitoBot, an assistant that answers a single student's "
     "questions about their own Canvas LMS data.\n"
     "\n"
     "Rules:\n"
     "1. Answer ONLY from data returned by the tools. Never state a grade, "
     "date, course or assignment that a tool did not return. If the tools do "
-    "not return anything relevant, clearly state that you do not have the data " 
+    "not return anything relevant, clearly state that you do not have the data "
     "for it; be direct and keep your answers simple.\n"
+    "Always respond with courses that belong to the active term. If the user"
+    "asks you about courses and assignments from another term, do not answer.\n"
     "2. The tools are already scoped to the authenticated student. Do not "
     "ask for, and never pass, a user id or tenant id.\n"
     "3. Arguments named `course_id` or `assignment_id` are UUIDs that must "
@@ -69,6 +73,45 @@ SYSTEM_PROMPT = (
     "6. Do not mention tools, SQL, tables or ids in your final answer. "
     "Speak to the student about their courses and assignments."
 )
+
+
+def build_system_prompt(today: date | None = None) -> str:
+    """Assemble the agent's system prompt with today's temporal context.
+
+    The base prompt is identical for every request. The temporal block
+    changes per call so the model knows which academic period to anchor
+    on when interpreting "this semester", "this period" or any phrase
+    that depends on the calendar. Out-of-cycle dates (January,
+    February) say so explicitly so the model does not silently fall
+    back to last year's Period 2.
+    """
+    reference = today or datetime.now(UTC).date()
+    period = current_academic_period(reference)
+    if period is None:
+        temporal_block = (
+            "\n\nContexto temporal:\n"
+            f"- Hoy es {reference.isoformat()}. Estamos fuera del período "
+            "académico (períodos: 1=marzo–julio, 2=agosto–diciembre).\n"
+            "- La herramienta `get_user_courses_current_term` no devolverá "
+            "cursos ahora mismo; dilo al estudiante en lugar de inventar "
+            "un período."
+        )
+    else:
+        year, period_num = period
+        temporal_block = (
+            "\n\nContexto temporal:\n"
+            f"- Hoy es {reference.isoformat()} ({year}, período {period_num} "
+            "según calendario académico: 1=marzo–julio, 2=agosto–diciembre).\n"
+            "- Para listar los cursos del período actual usa la herramienta "
+            "`get_user_courses_current_term`; no filtres tú mismo por el "
+            "período a partir del nombre."
+        )
+    return SYSTEM_PROMPT_BASE + temporal_block + "\n"
+
+
+# Backwards-compatible alias for callers that still reference the
+# module-level constant name.
+SYSTEM_PROMPT = build_system_prompt()
 
 
 # ---------------------------------------------------------------------------
@@ -125,10 +168,17 @@ class SQLToolRuntime:
     given slot (``"course_id"`` / ``"assignment_id"``); it is called
     lazily — only when a call actually carries an id — and is expected to
     cache internally.
+
+    ``tenant_id`` is the authenticated tenant's identifier. The
+    ``get_user_courses_current_term`` tool resolves its ``term_pattern``
+    slot from ``tenant_id`` together with today's academic period; other
+    tools do not need this field but it is always populated so server
+    slot builders have a single source of truth.
     """
 
     execute: Callable[[SQLTool, dict[str, Any]], list[dict[str, Any]]]
     known_ids: Callable[[str], set[str]]
+    tenant_id: Any = None
 
 
 # ---------------------------------------------------------------------------
@@ -283,7 +333,7 @@ def run_sql_agent(
     bound = _bind_tools(llm)
 
     messages: list[Any] = [
-        SystemMessage(content=SYSTEM_PROMPT),
+        SystemMessage(content=build_system_prompt()),
         HumanMessage(content=question),
     ]
     steps: list[AgentStep] = []
@@ -374,12 +424,13 @@ def run_sql_agent(
 __all__ = [
     "MAX_ROWS_TO_MODEL",
     "MAX_TOOL_STEPS",
-    "SYSTEM_PROMPT",
+    "SYSTEM_PROMPT_BASE",
     "AgentResult",
     "AgentStep",
     "AgentUnavailable",
     "SQLToolRuntime",
     "ToolCallRejected",
+    "build_system_prompt",
     "run_sql_agent",
 ]
 
