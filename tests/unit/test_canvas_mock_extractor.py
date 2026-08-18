@@ -34,7 +34,9 @@ import httpx
 import pytest
 
 from app.models import (
+    CanvasMockAssignment,
     CanvasMockAttendanceRecord,
+    CanvasMockClassSession,
     CanvasMockCourse,
     CanvasMockGrade,
 )
@@ -378,3 +380,139 @@ def test_extractor_upsert_attendance(db_session: Any) -> None:
     )
     assert len(fetched) == 1
     assert fetched[0].status == "present"
+
+
+# ---------------------------------------------------------------------------
+# Per-course upserts: assignments + class_sessions
+# ---------------------------------------------------------------------------
+
+
+def test_extractor_upsert_assignments_writes_to_db(db_session: Any) -> None:
+    """``upsert_assignments`` inserts assignments scoped by tenant."""
+    from app.schemas.canvas_mock import CanvasMockAssignmentDTO
+
+    tenant = uuid.uuid4()
+    assignments = [
+        CanvasMockAssignmentDTO(
+            id=501,
+            course_id=42,
+            name="TP1",
+            points_possible=10.0,
+            workflow_state="published",
+        ),
+        CanvasMockAssignmentDTO(
+            id=502,
+            course_id=42,
+            name="TP2",
+            points_possible=20.0,
+            workflow_state="published",
+        ),
+    ]
+    extractor = CanvasMockExtractor(
+        client=_client({}),
+        session_factory=lambda: db_session,
+    )
+    _run(extractor.upsert_assignments(tenant_id=tenant, assignments=assignments))
+    db_session.commit()
+    fetched = (
+        db_session.query(CanvasMockAssignment).filter_by(tenant_id=tenant).all()
+    )
+    assert len(fetched) == 2
+    by_id = {row.canvas_mock_id: row for row in fetched}
+    assert by_id[501].name == "TP1"
+    assert by_id[501].course_canvas_mock_id == 42
+    assert by_id[502].points_possible == 20.0
+
+
+def test_extractor_upsert_assignments_idempotent_on_natural_key(
+    db_session: Any,
+) -> None:
+    """Upserting the same assignment twice MUST NOT raise
+    (natural key = (tenant_id, canvas_mock_id))."""
+    from app.schemas.canvas_mock import CanvasMockAssignmentDTO
+
+    tenant = uuid.uuid4()
+    assignments = [
+        CanvasMockAssignmentDTO(
+            id=501,
+            course_id=42,
+            name="TP1",
+            points_possible=10.0,
+        ),
+    ]
+    extractor = CanvasMockExtractor(
+        client=_client({}),
+        session_factory=lambda: db_session,
+    )
+    _run(extractor.upsert_assignments(tenant_id=tenant, assignments=assignments))
+    db_session.commit()
+    # Second upsert with the same natural key must not raise.
+    _run(extractor.upsert_assignments(tenant_id=tenant, assignments=assignments))
+    db_session.commit()
+    fetched = (
+        db_session.query(CanvasMockAssignment).filter_by(tenant_id=tenant).all()
+    )
+    assert len(fetched) == 1
+
+
+def test_extractor_upsert_class_sessions_writes_to_db(db_session: Any) -> None:
+    """``upsert_class_sessions`` inserts sessions scoped by tenant."""
+    from app.schemas.canvas_mock import CanvasMockClassSessionDTO
+
+    tenant = uuid.uuid4()
+    sessions = [
+        CanvasMockClassSessionDTO(
+            id=9001,
+            course_id=42,
+            start_at="2026-08-18T10:00:00+00:00",
+            end_at="2026-08-18T12:00:00+00:00",
+        ),
+        CanvasMockClassSessionDTO(
+            id=9002,
+            course_id=42,
+            start_at="2026-08-20T10:00:00+00:00",
+            end_at="2026-08-20T12:00:00+00:00",
+        ),
+    ]
+    extractor = CanvasMockExtractor(
+        client=_client({}),
+        session_factory=lambda: db_session,
+    )
+    _run(extractor.upsert_class_sessions(tenant_id=tenant, class_sessions=sessions))
+    db_session.commit()
+    fetched = (
+        db_session.query(CanvasMockClassSession).filter_by(tenant_id=tenant).all()
+    )
+    assert len(fetched) == 2
+    by_id = {row.canvas_mock_id: row for row in fetched}
+    assert by_id[9001].course_canvas_mock_id == 42
+    assert by_id[9002].start_at is not None
+
+
+def test_extractor_upsert_class_sessions_idempotent_on_natural_key(
+    db_session: Any,
+) -> None:
+    """Upserting the same class session twice MUST NOT raise
+    (natural key = (tenant_id, canvas_mock_id))."""
+    from app.schemas.canvas_mock import CanvasMockClassSessionDTO
+
+    tenant = uuid.uuid4()
+    sessions = [
+        CanvasMockClassSessionDTO(
+            id=9001,
+            course_id=42,
+            start_at="2026-08-18T10:00:00+00:00",
+        ),
+    ]
+    extractor = CanvasMockExtractor(
+        client=_client({}),
+        session_factory=lambda: db_session,
+    )
+    _run(extractor.upsert_class_sessions(tenant_id=tenant, class_sessions=sessions))
+    db_session.commit()
+    _run(extractor.upsert_class_sessions(tenant_id=tenant, class_sessions=sessions))
+    db_session.commit()
+    fetched = (
+        db_session.query(CanvasMockClassSession).filter_by(tenant_id=tenant).all()
+    )
+    assert len(fetched) == 1
