@@ -46,6 +46,8 @@ records them in.
 
 from __future__ import annotations
 
+import uuid
+
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
@@ -514,6 +516,32 @@ def upgrade() -> None:
         "ix_canvas_mock_webhook_subscriptions_tenant_id",
         "canvas_mock_webhook_subscriptions",
         ["tenant_id"],
+    )
+
+    # --- Seed row (PR 1 task 1.8) -----------------------------------------
+    # One deterministic CanvasMock user row is inserted so production
+    # deployments have a reference entry for the webhook receiver's
+    # ``api_key_prefix`` correlation. The seed is idempotent: a second
+    # run on a populated DB no-ops because the natural key already
+    # exists. A real deployment overrides this row with its own
+    # tenant-scoped entry via the same SQLAlchemy session the runtime
+    # uses.
+    op.execute(
+        sa.text(
+            "INSERT INTO canvas_mock_users "
+            "(id, tenant_id, canvas_mock_id, name, role, api_key_prefix, "
+            " created_at, updated_at) "
+            "VALUES ("
+            " :id, :tenant_id, :canvas_mock_id, :name, :role, "
+            " :api_key_prefix, now(), now())"
+        ).bindparams(
+            id=uuid.uuid4(),
+            tenant_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+            canvas_mock_id=1,
+            name="Paquito Seed",
+            role="student",
+            api_key_prefix="seed0001",
+        )
     )
 
 
