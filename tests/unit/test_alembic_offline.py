@@ -45,6 +45,25 @@ def _venv_site_packages() -> str:
         exe_dir.parent / "Lib" / "site-packages",  # Windows venv
         exe_dir.parent / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages",  # POSIX venv
     ]
+    # WSL / cross-platform: when running the suite via uv on WSL the
+    # ``sys.executable`` does NOT point to the project's bundled venv
+    # (e.g. ``/mnt/c/Users/Administrador/langchain``), so the standard
+    # heuristics miss. Probe upward from the project root looking for any
+    # sibling directory containing ``langchain`` / ``venv`` / ``.venv`` /
+    # ``env`` whose ``lib`` / ``Lib`` tree has the alembic install.
+    repo_root = Path(__file__).resolve().parents[2]
+    for ancestor in repo_root.resolve().parents:
+        for venv_name in ("langchain", "venv", ".venv", "env"):
+            for name in ("lib", "Lib"):
+                for py in (
+                    f"python{sys.version_info.major}.{sys.version_info.minor}",
+                    "python3.13",
+                    "python3.12",
+                    "python3.11",
+                ):
+                    cand = ancestor / venv_name / name / py / "site-packages"
+                    if (cand / "alembic" / "config.py").exists():
+                        candidates.append(cand)
     for candidate in candidates:
         if (candidate / "alembic" / "config.py").exists():
             return str(candidate)
@@ -93,6 +112,17 @@ def test_alembic_offline_emits_seven_tables(tmp_path: Path) -> None:
         "assignments",
         "submissions",
         "sync_state",
+        # Canvas Mock PR 1 adds nine new tables (0003_...). The
+        # offline renderer must emit every one of them.
+        "canvas_mock_users",
+        "canvas_mock_courses",
+        "canvas_mock_enrollments",
+        "canvas_mock_class_sessions",
+        "canvas_mock_assignments",
+        "canvas_mock_attendance_records",
+        "canvas_mock_grades",
+        "canvas_mock_webhook_events",
+        "canvas_mock_webhook_subscriptions",
     }
     missing = {name for name in expected_tables if name not in stdout}
     assert not missing, f"offline DDL missing tables: {missing}"
