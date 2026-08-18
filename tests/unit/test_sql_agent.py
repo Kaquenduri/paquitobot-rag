@@ -17,7 +17,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from app.models import Assignment, Course, Enrollment, Submission, User
-from app.rag.agent import AgentUnavailable, run_sql_agent
+from app.rag.agent import AgentUnavailable, SQLToolRuntime, run_sql_agent
 from app.services.rag_factory import SelfUserUnresolved, _TenantToolRuntime
 from app.text_to_sql.tools import TOOL_CATALOG
 
@@ -501,3 +501,150 @@ def test_grounding_query_count_is_capped_per_request(
     # ``known_ids`` populated the cache on the first call and reused it.
     assert runtime_a._id_cache["course_id"]
     assert "assignment_id" not in runtime_a._id_cache
+
+
+# ---------------------------------------------------------------------------
+# Mock-tool chain tests (PR 3 task 3.5)
+# ---------------------------------------------------------------------------
+
+
+class ScriptedMockScriptedLLM:
+    """Stand-alone scripted LLM for the mock chain tests below.
+
+    Lives apart from :class:`ScriptedLLM` so the mock tests can run
+    without the legacy seed and verify the int-slot dispatch on their
+    own; the mock runtime is hand-rolled below.
+    """
+
+    def __init__(self, turns: list[AIMessage]) -> None:
+        self._turns = list(turns)
+        self.bound_specs: Any = None
+        self.invocations = 0
+
+    def bind_tools(self, specs: Any) -> ScriptedMockScriptedLLM:
+        self.bound_specs = specs
+        return self
+
+    def invoke(self, messages: list[Any]) -> AIMessage:
+        self.invocations += 1
+        return self._turns.pop(0) if self._turns else AIMessage(content="fin")
+
+
+def _mock_runtime() -> tuple[SQLToolRuntime, list[tuple[str, dict[str, Any]]]]:
+    """Hand-rolled mock runtime that fakes the SQL templates the catalog calls."""
+    executed: list[tuple[str, dict[str, Any]]] = []
+
+    def _execute(
+        slot_tool: Any, args: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        from app.text_to_sql.tools import SQLTool
+
+        assert isinstance(slot_tool, SQLTool)
+        executed.append((slot_tool.name, args))
+        if slot_tool.name == "get_user_mock_courses":
+            return [{"canvas_mock_id": 101, "name": "Cálculo I"}]
+        if slot_tool.name == "get_mock_course_details":
+            return [{"canvas_mock_id": 101, "name": "Cálculo I", "enrollments_count": 30}]
+        return []
+
+    def _known_ids(slot: str) -> set[str]:
+        if slot == "course_id_mock":
+            return {"101"}
+        return set()
+
+    return (
+        SQLToolRuntime(execute=_execute, known_ids=_known_ids, tenant_id="tenant-A"),
+        executed,
+    )
+
+
+def test_mock_chain_accepts_int_course_id() -> None:
+    """A two-step chain with an int ``course_id_mock`` validates without
+    UUID parsing and lands on the second tool with the int copied.
+
+    This is the core PR 3 invariant: the agent MUST accept integer
+    mock ids at the validation boundary, not just legacy UUIDs.
+    """
+    from app.text_to_sql.tools import TOOL_CATALOG
+
+    runtime, executed = _mock_runtime()
+    llm = ScriptedMockScriptedLLM(
+        [
+            AIMessage(content="", tool_calls=[call("get_user_mock_courses", {})]),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    call("get_mock_course_details", {"course_id_mock": 101}, "c2"),
+                ],
+            ),
+            AIMessage(content="Cálculo I."),
+        ]
+    )
+    result = run_sql_agent(llm, "detalles", runtime=runtime)
+    assert result.tools_used == ["get_user_mock_courses", "get_mock_course_details"]
+    assert executed[0][0] == "get_user_mock_courses"
+    assert executed[1][0] == "get_mock_course_details"
+    assert executed[1][1] == {"course_id_mock": 101}
+    assert TOOL_CATALOG["get_mock_course_details"].slot_type == "int"
+
+
+def test_mock_chain_rejects_uuid_for_int_slot() -> None:
+    """A UUID string against an int-slot mock tool is rejected."""
+    runtime, executed = _mock_runtime()
+    llm = ScriptedMockScriptedLLM(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    call(
+                        "get_mock_course_details",
+                        {"course_id_mock": "11111111-1111-4111-8111-111111111111"},
+                    )
+                ],
+            ),
+            AIMessage(content="No lo encuentro."),
+        ]
+    )
+    result = run_sql_agent(llm, "detalles", runtime=runtime)
+    step = result.steps[0]
+    assert step.ok is False
+    assert "integer" in (step.error or "").lower() or "not a valid" in (step.error or "")
+    assert executed == []
+
+
+def test_mock_chain_rejects_unknown_int_id() -> None:
+    """An int that is not in the tenant's grounding set is rejected."""
+    from app.rag.agent import SQLToolRuntime as AgentRuntime
+
+    def _known(slot: str) -> set[str]:
+        return {"101"} if slot == "course_id_mock" else set()
+
+    runtime = AgentRuntime(
+        execute=lambda *_: [],  # never reached
+        known_ids=_known,
+        tenant_id="tenant-A",
+    )
+    llm = ScriptedMockScriptedLLM(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[call("get_mock_course_details", {"course_id_mock": 999})],
+            ),
+            AIMessage(content="No."),
+        ]
+    )
+    result = run_sql_agent(llm, "x", runtime=runtime)
+    assert result.steps[0].ok is False
+    assert "does not belong" in (result.steps[0].error or "")
+
+
+def test_mock_tools_are_the_only_bound_catalog() -> None:
+    """The agent MUST see only the nine mock tools, never the legacy UUIDs."""
+    from app.text_to_sql.tools import MOCK_TOOL_NAMES, TOOL_CATALOG
+
+    runtime, _ = _mock_runtime()
+    llm = ScriptedMockScriptedLLM([AIMessage(content="hola")])
+    run_sql_agent(llm, "hola", runtime=runtime)
+    bound = {spec["name"] for spec in llm.bound_specs}
+    assert bound == MOCK_TOOL_NAMES
+    assert bound == set(TOOL_CATALOG)

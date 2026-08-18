@@ -472,8 +472,8 @@ def _selftest() -> None:
         assert len(calls) == before, "grounding set must be cached per request"
 
         # A model-supplied course_id_mock rides along as a bind parameter.
-        runtime.execute(TOOL_CATALOG["get_mock_course_details"], {"course_id": 101})
-        assert calls[-1][1] == {"course_id": 101}
+        runtime.execute(TOOL_CATALOG["get_mock_course_details"], {"course_id_mock": 101})
+        assert calls[-1][1] == {"course_id_mock": 101}
     finally:
         module_globals["execute_readonly"] = original
 

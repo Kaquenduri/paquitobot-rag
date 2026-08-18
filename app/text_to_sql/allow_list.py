@@ -171,23 +171,23 @@ def _register_mock_agent_tools(registry: AllowList) -> None:
         "get_mock_course_details",
         "SELECT canvas_mock_id, name, course_code, workflow_state, start_at, end_at, enrollments_count "
         "FROM canvas_mock_courses "
-        "WHERE tenant_id = {{tenant_id}} AND canvas_mock_id = {{course_id}} AND deleted_at IS NULL",
-        slots={"tenant_id", "course_id"},
+        "WHERE tenant_id = {{tenant_id}} AND canvas_mock_id = {{course_id_mock}} AND deleted_at IS NULL",
+        slots={"tenant_id", "course_id_mock"},
     )
     registry.register(
         "get_mock_course_assignments",
         "SELECT canvas_mock_id, name, description, points_possible, due_at, grading_type, workflow_state "
         "FROM canvas_mock_assignments "
-        "WHERE tenant_id = {{tenant_id}} AND course_canvas_mock_id = {{course_id}} AND deleted_at IS NULL "
+        "WHERE tenant_id = {{tenant_id}} AND course_canvas_mock_id = {{course_id_mock}} AND deleted_at IS NULL "
         "ORDER BY due_at ASC",
-        slots={"tenant_id", "course_id"},
+        slots={"tenant_id", "course_id_mock"},
     )
     registry.register(
         "get_mock_assignment_details",
         "SELECT canvas_mock_id, name, description, points_possible, due_at, grading_type, workflow_state "
         "FROM canvas_mock_assignments "
-        "WHERE tenant_id = {{tenant_id}} AND canvas_mock_id = {{assignment_id}} AND deleted_at IS NULL",
-        slots={"tenant_id", "assignment_id"},
+        "WHERE tenant_id = {{tenant_id}} AND canvas_mock_id = {{assignment_id_mock}} AND deleted_at IS NULL",
+        slots={"tenant_id", "assignment_id_mock"},
     )
     registry.register(
         "get_user_mock_grades",
@@ -204,10 +204,10 @@ def _register_mock_agent_tools(registry: AllowList) -> None:
         "FROM canvas_mock_grades g "
         "JOIN canvas_mock_assignments a ON a.canvas_mock_id = g.assignment_canvas_mock_id AND a.tenant_id = g.tenant_id "
         "WHERE g.tenant_id = {{tenant_id}} AND g.user_canvas_mock_id = {{user_id_mock}} "
-        "AND a.course_canvas_mock_id = {{course_id}} "
+        "AND a.course_canvas_mock_id = {{course_id_mock}} "
         "AND g.deleted_at IS NULL AND a.deleted_at IS NULL "
         "ORDER BY g.graded_at DESC",
-        slots={"tenant_id", "user_id_mock", "course_id"},
+        slots={"tenant_id", "user_id_mock", "course_id_mock"},
     )
     registry.register(
         "get_user_missing_mock_assignments",
@@ -237,9 +237,9 @@ def _register_mock_agent_tools(registry: AllowList) -> None:
         "get_mock_class_sessions",
         "SELECT canvas_mock_id, course_canvas_mock_id, start_at, end_at "
         "FROM canvas_mock_class_sessions "
-        "WHERE tenant_id = {{tenant_id}} AND course_canvas_mock_id = {{course_id}} AND deleted_at IS NULL "
+        "WHERE tenant_id = {{tenant_id}} AND course_canvas_mock_id = {{course_id_mock}} AND deleted_at IS NULL "
         "ORDER BY start_at ASC",
-        slots={"tenant_id", "course_id"},
+        slots={"tenant_id", "course_id_mock"},
     )
 
 
