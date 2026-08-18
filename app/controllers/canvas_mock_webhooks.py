@@ -52,7 +52,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.db import session_factory_for
 from app.core.logging import get_logger
-from app.models import CanvasMockWebhookEvent, CanvasMockWebhookSubscription
+from app.models import CanvasMockUser, CanvasMockWebhookEvent
 from app.security.webhook_hmac import (
     verify_signature,
 )
@@ -108,20 +108,48 @@ def _missing_headers(headers: Any) -> list[str]:
     return missing
 
 
-def _resolve_tenant_id(session: Session, target_url: str) -> uuid.UUID | None:
-    """Find the tenant that owns the subscription matching ``target_url``.
+def _resolve_tenant_id_from_header(raw_header: str, session: Session) -> uuid.UUID:
+    """Translate the ``X-Canvas-Mock-Tenant-Id`` header to Primer's
+    ``tenant_id`` (UUID).
 
-    The mock enforces that the subscription was registered by the
-    tenant and uses the secret stored there. The receiver matches by
-    ``target_url`` so a forged cross-tenant request cannot pass this
-    check.
+    The mock's ``institutions`` table is keyed by an integer ID, and the
+    webhook header carries that integer — NOT a UUID. PaquitoBot's
+    receiver translates the integer to the Primer tenant_id via the
+    ``canvas_mock_users`` table: the admin user that registered the
+    mock API key has a row with ``(tenant_id=UUID, canvas_mock_id=INT)``.
+
+    Lookup is by ``canvas_mock_id`` alone (the integer is globally
+    unique inside the mock; the same admin row covers all tenants
+    because only the admin who registered the key can fire webhooks).
+
+    Raises ``HTTPException(400)`` when the header is malformed or no
+    ``CanvasMockUser`` row carries the integer.
     """
-    sub = (
-        session.query(CanvasMockWebhookSubscription)
-        .filter_by(target_url=target_url)
+    try:
+        mock_id = int(raw_header)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="malformed X-Canvas-Mock-Tenant-Id header (expected integer)",
+        ) from exc
+
+    row = (
+        session.query(CanvasMockUser)
+        .filter_by(canvas_mock_id=mock_id)
         .one_or_none()
     )
-    return sub.tenant_id if sub else None
+    if row is None:
+        logger.warning(
+            "canvas_mock_webhook_unknown_tenant",
+            canvas_mock_id=mock_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"no Primer tenant registered for canvas_mock_id={mock_id}"
+            ),
+        )
+    return row.tenant_id
 
 
 # ---------------------------------------------------------------------------
@@ -242,7 +270,17 @@ async def receive_canvas_mock_webhook(request: Request) -> dict[str, Any]:
     delivery_id = request.headers["x-canvas-mock-delivery"]
     attempt_ts = int(request.headers["x-canvas-mock-timestamp"])
     attempt = int(request.headers["x-canvas-mock-attempt"])
-    tenant_id_header = uuid.UUID(request.headers["x-canvas-mock-tenant-id"])
+
+    # Resolve the integer tenant header to Primer's tenant_id (UUID)
+    # via the ``canvas_mock_users`` admin row. Raises 400 on a
+    # malformed or unknown header.
+    session = _factory()
+    try:
+        tenant_id_header = _resolve_tenant_id_from_header(
+            request.headers["x-canvas-mock-tenant-id"], session
+        )
+    finally:
+        session.close()
 
     try:
         resource_id = int(request.headers.get("x-canvas-mock-resource-id", "0"))
