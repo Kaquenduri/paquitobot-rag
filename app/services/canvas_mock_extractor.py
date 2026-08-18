@@ -50,7 +50,9 @@ from app.models import (
     CanvasMockGrade,
 )
 from app.schemas.canvas_mock import (
+    CanvasMockAssignmentDTO,
     CanvasMockAttendanceRecordDTO,
+    CanvasMockClassSessionDTO,
     CanvasMockCourseDTO,
     CanvasMockGradeDTO,
 )
@@ -83,6 +85,8 @@ class CanvasMockShapeError(Exception):
 PATH_COURSES = "/users/self/courses"
 PATH_ATTENDANCE = "/users/self/attendance"
 PATH_GRADES = "/users/self/grades"
+PATH_COURSE_ASSIGNMENTS = "/users/self/courses/{course_id}/assignments"
+PATH_COURSE_CLASS_SESSIONS = "/users/self/courses/{course_id}/class_sessions"
 
 # Locked default for the attendance window. The mock router accepts
 # ``days`` in [1, 365] and defaults to 14; we send it explicitly so
@@ -149,6 +153,20 @@ class CanvasMockExtractor:
         return self._validate_dtos(
             rows, CanvasMockAttendanceRecordDTO, "attendance"
         )
+
+    async def fetch_assignments_for_course(
+        self, course_id: int
+    ) -> list[CanvasMockAssignmentDTO]:
+        path = PATH_COURSE_ASSIGNMENTS.format(course_id=course_id)
+        rows = await self._fetch_all(path)
+        return self._validate_dtos(rows, CanvasMockAssignmentDTO, "assignments")
+
+    async def fetch_class_sessions_for_course(
+        self, course_id: int
+    ) -> list[CanvasMockClassSessionDTO]:
+        path = PATH_COURSE_CLASS_SESSIONS.format(course_id=course_id)
+        rows = await self._fetch_all(path)
+        return self._validate_dtos(rows, CanvasMockClassSessionDTO, "class_sessions")
 
     def _validate_dtos(
         self,
@@ -320,6 +338,8 @@ __all__ = [
     "ATTENDANCE_DAYS_DEFAULT",
     "PATH_ATTENDANCE",
     "PATH_COURSES",
+    "PATH_COURSE_ASSIGNMENTS",
+    "PATH_COURSE_CLASS_SESSIONS",
     "PATH_GRADES",
     "CanvasMockExtractor",
     "CanvasMockShapeError",
