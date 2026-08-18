@@ -186,6 +186,66 @@ def test_extractor_fetch_grades_calls_self_grades_no_params() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Per-course fetch (fan-out): assignments + class sessions
+# ---------------------------------------------------------------------------
+
+
+def test_extractor_fetch_assignments_for_course_hits_per_course_path() -> None:
+    """``fetch_assignments_for_course`` MUST hit the per-course path."""
+    client, captured = _recording_client(
+        {
+            "/users/self/courses/42/assignments": [
+                {
+                    "id": 501,
+                    "course_id": 42,
+                    "name": "TP1",
+                    "points_possible": 10.0,
+                },
+                {
+                    "id": 502,
+                    "course_id": 42,
+                    "name": "TP2",
+                    "points_possible": 20.0,
+                },
+            ],
+        }
+    )
+    extractor = CanvasMockExtractor(client=client)
+    rows = _run(extractor.fetch_assignments_for_course(42))
+    assert len(captured) == 1
+    request = captured[0]
+    assert request.url.path == "/users/self/courses/42/assignments"
+    assert len(rows) == 2
+    assert rows[0].id == 501
+    assert rows[0].course_id == 42
+    assert rows[1].name == "TP2"
+
+
+def test_extractor_fetch_class_sessions_for_course_hits_per_course_path() -> None:
+    """``fetch_class_sessions_for_course`` MUST hit the per-course path."""
+    client, captured = _recording_client(
+        {
+            "/users/self/courses/42/class_sessions": [
+                {
+                    "id": 9001,
+                    "course_id": 42,
+                    "start_at": "2026-08-18T10:00:00+00:00",
+                    "end_at": "2026-08-18T12:00:00+00:00",
+                },
+            ],
+        }
+    )
+    extractor = CanvasMockExtractor(client=client)
+    rows = _run(extractor.fetch_class_sessions_for_course(42))
+    assert len(captured) == 1
+    request = captured[0]
+    assert request.url.path == "/users/self/courses/42/class_sessions"
+    assert len(rows) == 1
+    assert rows[0].id == 9001
+    assert rows[0].course_id == 42
+
+
+# ---------------------------------------------------------------------------
 # Happy paths
 # ---------------------------------------------------------------------------
 
