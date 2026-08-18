@@ -8,6 +8,7 @@ keeps everything in-process — no real network involved.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -34,6 +35,11 @@ def _ok_handler(request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, json=payload.get(path, []))
 
 
+def _run(coro: Any) -> Any:
+    """Run a coroutine from a sync test."""
+    return asyncio.run(coro)
+
+
 def test_client_sends_x_api_key_and_bearer() -> None:
     """Every request carries both ``X-Api-Key`` and ``Authorization: Bearer``."""
     seen: list[httpx.Request] = []
@@ -48,8 +54,8 @@ def test_client_sends_x_api_key_and_bearer() -> None:
         jwt_token="jwt.test.token",
         transport=httpx.MockTransport(_handler),
     )
-    client.get("/courses", tenant_id="tenant-1")
-    client.get("/assignments", tenant_id="tenant-1")
+    _run(client.get("/courses"))
+    _run(client.get("/assignments"))
     assert len(seen) == 2
     for request in seen:
         assert request.headers["X-Api-Key"] == "adm_test_key"
@@ -65,7 +71,7 @@ def test_client_get_only_rejects_post() -> None:
         transport=httpx.MockTransport(_ok_handler),
     )
     with pytest.raises(CanvasMockError):
-        client.post("/courses", body={})  # type: ignore[attr-defined]
+        _run(client._request_with_retry("POST", "/courses"))
 
 
 def test_client_returns_parsed_json() -> None:
@@ -76,7 +82,7 @@ def test_client_returns_parsed_json() -> None:
         jwt_token="jwt",
         transport=httpx.MockTransport(_ok_handler),
     )
-    rows = client.get("/courses", tenant_id="tenant-1")
+    rows = _run(client.get("/courses"))
     assert rows == [{"id": 101, "name": "Cálculo I"}]
 
 
@@ -95,7 +101,7 @@ def test_client_terminal_4xx_no_retry() -> None:
         transport=httpx.MockTransport(_handler),
     )
     with pytest.raises(CanvasMockError):
-        client.get("/courses", tenant_id="tenant-1")
+        _run(client.get("/courses"))
     assert len(calls) == 1
 
 
@@ -114,7 +120,7 @@ def test_client_retries_5xx_three_times() -> None:
         transport=httpx.MockTransport(_handler),
     )
     with pytest.raises(CanvasMockTransientError):
-        client.get("/courses", tenant_id="tenant-1")
+        _run(client.get("/courses"))
     assert len(calls) == 3
 
 
@@ -134,7 +140,7 @@ def test_client_succeeds_after_transient_failures() -> None:
         jwt_token="jwt",
         transport=httpx.MockTransport(_handler),
     )
-    rows = client.get("/courses", tenant_id="tenant-1")
+    rows = _run(client.get("/courses"))
     assert rows == [{"id": 12}]
     assert len(calls) == 2
 
@@ -164,7 +170,49 @@ def test_client_auth_headers_track_token_changes() -> None:
         jwt_token="jwt.v1",
         transport=httpx.MockTransport(_handler),
     )
-    client.get("/courses", tenant_id="tenant-1")
+    _run(client.get("/courses"))
     client.set_jwt_token("jwt.v2")
-    client.get("/courses", tenant_id="tenant-1")
+    _run(client.get("/courses"))
     assert seen_auth == ["Bearer jwt.v1", "Bearer jwt.v2"]
+
+
+def test_client_backoff_schedule_records_exact_delays() -> None:
+    """Recorded delays match the locked ``[0.5, 2.0]`` schedule.
+
+    Two retries means two waits between three attempts; the third
+    attempt does not wait. ``asyncio.sleep`` is monkey-patched to
+    record each delay without blocking, so the test finishes in
+    milliseconds.
+    """
+    import app.services.canvas_mock_client as module
+
+    recorded: list[float] = []
+    real_sleep = asyncio.sleep
+
+    async def _recording_sleep(seconds: float) -> None:
+        recorded.append(seconds)
+        await real_sleep(0)
+
+    calls: list[int] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(503, json={"error": "transient"})
+
+    client = CanvasMockClient(
+        base_url="https://canvas-mock.example.com",
+        api_key="adm_test",
+        jwt_token="jwt",
+        transport=httpx.MockTransport(_handler),
+    )
+    original = module.asyncio.sleep
+    module.asyncio.sleep = _recording_sleep  # type: ignore[assignment]
+    try:
+        with pytest.raises(CanvasMockTransientError):
+            _run(client.get("/courses"))
+    finally:
+        module.asyncio.sleep = original  # type: ignore[assignment]
+
+    assert recorded == [0.5, 2.0], recorded
+    assert len(calls) == 3
+
