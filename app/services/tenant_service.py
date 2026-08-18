@@ -411,6 +411,34 @@ class TenantService:
         with self._lock:
             return tenant_id in self._credentials
 
+    def get_mock_api_key_prefix(self, tenant_id: uuid.UUID) -> str:
+        """Return the registered canvas-mock ``api_key_prefix`` for ``tenant_id``.
+
+        The mock catalog lives in the ``canvas_mock_users`` table; the
+        full API key is never persisted (the canvas-mock-api only
+        echoes the first 8 characters back per the connector contract
+        in ``app.controllers.auth_canvas_mock``). The session must be
+        present — the in-memory fallback has no parallel mock store,
+        so the lookup raises :class:`TenantNotFound` when no session
+        is bound. The 403 mapping is up to the dependency layer.
+        """
+        if self._session is None:
+            raise TenantNotFound(
+                f"no canvas-mock key registered for tenant {tenant_id}"
+            )
+        from sqlalchemy import select
+
+        from app.models import CanvasMockUser
+
+        row = self._session.execute(
+            select(CanvasMockUser).where(CanvasMockUser.tenant_id == tenant_id)
+        ).scalars().first()
+        if row is None or row.api_key_prefix is None:
+            raise TenantNotFound(
+                f"no canvas-mock key registered for tenant {tenant_id}"
+            )
+        return row.api_key_prefix
+
 
 # --- application persistence mode -------------------------------------------
 
