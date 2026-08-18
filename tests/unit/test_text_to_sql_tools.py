@@ -19,12 +19,12 @@ from pathlib import Path
 import pytest
 
 from app.text_to_sql.tools import (
+    _TOOL_SPECS,
     TOOL_CATALOG,
     TOOL_NAMES,
     MockAssignmentArgs,
     MockCourseArgs,
     NoArgs,
-    _TOOL_SPECS,
     tool_specs,
 )
 

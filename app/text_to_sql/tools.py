@@ -467,8 +467,8 @@ def tool_specs() -> list[dict[str, object]]:
 
 
 __all__ = [
-    "SERVER_SLOTS",
     "MOCK_TOOL_NAMES",
+    "SERVER_SLOTS",
     "TOOL_CATALOG",
     "TOOL_NAMES",
     "AssignmentArgs",
