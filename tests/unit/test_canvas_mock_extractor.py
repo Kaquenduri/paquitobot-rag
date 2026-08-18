@@ -11,8 +11,9 @@ The extractor:
 The mock exposes ONLY these ``/users/self/*`` endpoints (verified
 against canvas-mock-api/app/api/routers/users_self.py):
 
-- ``GET /users/self/courses?include[]=term`` — required to get the term
-  sub-object; ``/users/self/favorites/courses`` does NOT accept it.
+- ``GET /users/self/courses`` — list of enrolled courses. The mock's
+  ``?include[]=term`` handler hits a missing ``terms`` table (500),
+  so we deliberately do NOT send it.
 - ``GET /users/self/attendance?days=N`` — global (no per-course scope).
 - ``GET /users/self/grades`` — global (no per-course scope).
 - ``GET /users/self/profile``.
@@ -99,12 +100,12 @@ def _run(coro: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def test_extractor_fetch_courses_calls_self_courses_with_term_include() -> None:
-    """``fetch_courses`` MUST hit ``/users/self/courses?include[]=term``.
+def test_extractor_fetch_courses_calls_self_courses_no_params() -> None:
+    """``fetch_courses`` MUST hit ``/users/self/courses`` with no query params.
 
-    The mock's ``/users/self/favorites/courses`` does NOT accept the
-    ``include[]=term`` query param; the only endpoint that does is
-    ``/users/self/courses``.
+    The mock's ``?include[]=term`` handler hits a missing ``terms`` table
+    (returns 500), so the extractor deliberately avoids it. The term sub-object
+    is not embedded; the local ORM has no term columns.
     """
     client, captured = _recording_client(
         {
@@ -114,7 +115,6 @@ def test_extractor_fetch_courses_calls_self_courses_with_term_include() -> None:
                     "name": "Cálculo I",
                     "course_code": "CALC-1",
                     "workflow_state": "available",
-                    "term": {"id": 1, "name": "Fall 2026"},
                 }
             ],
         }
@@ -124,7 +124,9 @@ def test_extractor_fetch_courses_calls_self_courses_with_term_include() -> None:
     assert len(captured) == 1
     request = captured[0]
     assert request.url.path == "/users/self/courses"
-    assert request.url.params["include[]"] == "term"
+    # No query params: the mock's include[]=term handler is broken
+    # (references a missing `terms` table).
+    assert len(request.url.params) == 0
     assert len(rows) == 1
     assert rows[0].id == 101
 

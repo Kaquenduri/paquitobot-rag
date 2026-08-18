@@ -23,14 +23,15 @@ use ``asyncio.run`` to bridge from sync test code.
 Endpoint contract (verified against canvas-mock-api
 ``app/api/routers/users_self.py``):
 
-- ``GET /users/self/courses?include[]=term`` — the only endpoint that
-  embeds the term sub-object. ``/users/self/favorites/courses``
-  accepts no query params; per-course assignments/grades are
-  admin-only under ``/admin/*`` and cannot be reached by a
-  self-service caller.
+- ``GET /users/self/courses`` — list of the caller's enrolled courses.
+  No query params supported; the mock's ``?include[]=term`` handler
+  hits a missing ``terms`` table (500), so we do NOT send it.
 - ``GET /users/self/attendance?days=N`` — global; ``days`` defaults
   to 14 in the mock router.
 - ``GET /users/self/grades`` — global, no params.
+
+Per-course assignments/grades are admin-only under ``/admin/*`` and
+cannot be reached by a self-service caller.
 """
 
 from __future__ import annotations
@@ -88,11 +89,6 @@ PATH_GRADES = "/users/self/grades"
 # downstream operators know what the extractor is asking for.
 ATTENDANCE_DAYS_DEFAULT: int = 14
 
-# Query parameter names used by the mock. ``include[]=term`` is the
-# canonical Canvas flag for embedding sub-objects; using a list
-# value lets httpx emit ``include[]=term`` (no key suffix).
-TERM_INCLUDE_PARAM = "include[]"
-
 
 # ---------------------------------------------------------------------------
 # Service
@@ -138,10 +134,7 @@ class CanvasMockExtractor:
         return rows
 
     async def fetch_courses(self) -> list[CanvasMockCourseDTO]:
-        rows = await self._fetch_all(
-            PATH_COURSES,
-            params={TERM_INCLUDE_PARAM: ["term"]},
-        )
+        rows = await self._fetch_all(PATH_COURSES)
         return self._validate_dtos(rows, CanvasMockCourseDTO, "courses")
 
     async def fetch_grades(self) -> list[CanvasMockGradeDTO]:
@@ -328,7 +321,6 @@ __all__ = [
     "PATH_ATTENDANCE",
     "PATH_COURSES",
     "PATH_GRADES",
-    "TERM_INCLUDE_PARAM",
     "CanvasMockExtractor",
     "CanvasMockShapeError",
 ]
