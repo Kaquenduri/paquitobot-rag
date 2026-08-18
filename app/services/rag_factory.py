@@ -38,7 +38,7 @@ from app.text_to_sql.template_selector import (
     current_term_slots,
     select_template,
 )
-from app.text_to_sql.tools import SQLTool
+from app.text_to_sql.tools import TOOL_CATALOG, SQLTool
 
 logger = get_logger("app.services.rag_service_factory")
 
@@ -220,15 +220,35 @@ class _TenantToolRuntime:
         self._mock_extractor_factory = mock_extractor_factory
 
     def _run_template(self, name: str, extra_slots: dict[str, Any]) -> list[dict[str, Any]]:
-        # ``resolve`` needs tenant_id to render ``{{tenant_id}}``; the bind
-        # value itself is supplied by ``execute_readonly``, which also sets
-        # the transaction-local read-only and tenant guards.
-        rendered = ALLOW_LIST.resolve(name, {"tenant_id": str(self._tenant_id), **extra_slots})
+        # ``resolve`` needs every declared slot to be supplied. ``tenant_id``
+        # is the runtime's constant; any other server-owned slot declared on
+        # the tool (currently ``user_id`` and ``user_id_mock`` for the mock
+        # catalog) is resolved from the cached self-id getters so neither the
+        # model nor the caller has to know the value. The bind value for
+        # ``tenant_id`` itself is supplied by ``execute_readonly`` below,
+        # which also sets the transaction-local read-only and tenant guards.
+        server_slots: dict[str, Any] = {"tenant_id": str(self._tenant_id)}
+        tool = TOOL_CATALOG.get(name)
+        if tool is not None:
+            for slot in tool.server_slots:
+                if slot in server_slots or slot in extra_slots:
+                    continue
+                if slot == "user_id":
+                    user_id = self.self_user_id()
+                    if user_id is None:
+                        raise SelfUserUnresolved("tenant has no synced user row")
+                    server_slots[slot] = user_id
+                elif slot == "user_id_mock":
+                    mock_user_id = self.self_mock_user_id()
+                    if mock_user_id is None:
+                        raise SelfUserUnresolved("tenant has no mocked user row")
+                    server_slots[slot] = mock_user_id
+        rendered = ALLOW_LIST.resolve(name, {**server_slots, **extra_slots})
         return execute_readonly(
             self._session,
             rendered,
             tenant_id=self._tenant_id,
-            params=extra_slots,
+            params={**server_slots, **extra_slots},
         )
 
     def self_user_id(self) -> str | None:
