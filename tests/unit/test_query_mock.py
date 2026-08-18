@@ -80,6 +80,9 @@ def mock_query_app() -> Iterator[tuple[FastAPI, sessionmaker, Engine]]:
     factory = session_factory_for(engine)
     try:
         app = FastAPI()
+        from app.core.errors import register_exception_handlers
+
+        register_exception_handlers(app)
         setattr(app.state, SESSION_STORE_STATE_FLAG, True)
         app.add_middleware(CorrelationIdMiddleware)
         app.include_router(router)
