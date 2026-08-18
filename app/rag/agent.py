@@ -458,8 +458,8 @@ def _selftest() -> None:
     # cp1252 Windows console.
     configure_console_encoding()
 
-    course_id = "11111111-1111-4111-8111-111111111111"
-    assignment_id = "22222222-2222-4222-8222-222222222222"
+    course_id_mock = 101
+    assignment_id_mock = 42
 
     class _ScriptedLLM:
         """Replays a fixed sequence of model turns and records what it saw."""
@@ -481,18 +481,18 @@ def _selftest() -> None:
 
     def _execute(tool: SQLTool, args: dict[str, Any]) -> list[dict[str, Any]]:
         executed.append((tool.name, args))
-        if tool.name == "get_user_courses":
-            return [{"id": course_id, "name": "Cálculo I"}]
-        if tool.name == "get_user_course_submissions":
+        if tool.name == "get_user_mock_courses":
+            return [{"canvas_mock_id": course_id_mock, "name": "Cálculo I"}]
+        if tool.name == "get_user_mock_course_grades":
             return [{"assignment_name": "Parcial", "score": 18.0}]
         return []
 
     runtime = SQLToolRuntime(
         execute=_execute,
         known_ids=lambda slot: {
-            "course_id": {course_id},
-            "assignment_id": {assignment_id},
-        }[slot],
+            "course_id_mock": {str(course_id_mock)},
+            "assignment_id_mock": {str(assignment_id_mock)},
+        }.get(slot, set()),
     )
 
     def _call(name: str, args: dict[str, Any], cid: str = "c1") -> dict[str, Any]:
@@ -501,11 +501,15 @@ def _selftest() -> None:
     # 1. Two-step chain: discover the course id, then use it.
     llm = _ScriptedLLM(
         [
-            AIMessage(content="", tool_calls=[_call("get_user_courses", {})]),
+            AIMessage(content="", tool_calls=[_call("get_user_mock_courses", {})]),
             AIMessage(
                 content="",
                 tool_calls=[
-                    _call("get_user_course_submissions", {"course_id": course_id}, "c2")
+                    _call(
+                        "get_user_mock_course_grades",
+                        {"course_id_mock": course_id_mock},
+                        "c2",
+                    )
                 ],
             ),
             AIMessage(content="Sacaste 18 en el Parcial de Cálculo I."),
@@ -513,9 +517,12 @@ def _selftest() -> None:
     )
     result = run_sql_agent(llm, "¿cuánto saqué en cálculo?", runtime=runtime)
     assert result.answer.startswith("Sacaste 18"), result.answer
-    assert result.tools_used == ["get_user_courses", "get_user_course_submissions"]
+    assert result.tools_used == ["get_user_mock_courses", "get_user_mock_course_grades"]
     assert not result.exhausted
-    assert executed[1] == ("get_user_course_submissions", {"course_id": course_id})
+    assert executed[1] == (
+        "get_user_mock_course_grades",
+        {"course_id_mock": course_id_mock},
+    )
     # The catalog reached the model as tool declarations, not free text.
     assert {s["name"] for s in llm.bound_specs} == set(TOOL_CATALOG)
 
@@ -528,8 +535,8 @@ def _selftest() -> None:
                 content="",
                 tool_calls=[
                     _call(
-                        "get_course_details",
-                        {"course_id": "99999999-9999-4999-8999-999999999999"},
+                        "get_mock_course_details",
+                        {"course_id_mock": 999},
                     )
                 ],
             ),
@@ -539,7 +546,7 @@ def _selftest() -> None:
     result = run_sql_agent(llm, "detalles del curso X", runtime=runtime)
     assert executed == [], executed
     assert result.steps[0].ok is False
-    assert "get_user_courses" in (result.steps[0].error or "")
+    assert "get_user_mock_courses" in (result.steps[0].error or "")
 
     # 3. Malformed id: rejected on format, never reaches the database.
     executed.clear()
@@ -547,14 +554,18 @@ def _selftest() -> None:
         [
             AIMessage(
                 content="",
-                tool_calls=[_call("get_course_details", {"course_id": "cálculo"})],
+                tool_calls=[_call("get_mock_course_details", {"course_id_mock": "cálculo"})],
             ),
             AIMessage(content="Necesito el identificador."),
         ]
     )
     result = run_sql_agent(llm, "detalles", runtime=runtime)
     assert executed == []
-    assert "not a valid id" in (result.steps[0].error or "")
+    assert (
+        "not a valid" in (result.steps[0].error or "")
+        or "is not a valid" in (result.steps[0].error or "")
+        or "Invalid arguments" in (result.steps[0].error or "")
+    )
 
     # 4. Smuggling tenant_id through the arguments is refused by name.
     executed.clear()
@@ -563,7 +574,7 @@ def _selftest() -> None:
             AIMessage(
                 content="",
                 tool_calls=[
-                    _call("get_user_courses", {"tenant_id": "some-other-tenant"})
+                    _call("get_user_mock_courses", {"tenant_id": "some-other-tenant"})
                 ],
             ),
             AIMessage(content="Listo."),
@@ -587,10 +598,10 @@ def _selftest() -> None:
     #    answer from what it has.
     looping = _ScriptedLLM(
         [
-            AIMessage(content="", tool_calls=[_call("get_user_courses", {})]),
-            AIMessage(content="", tool_calls=[_call("get_user_courses", {})]),
-            AIMessage(content="", tool_calls=[_call("get_user_courses", {})]),
-            AIMessage(content="", tool_calls=[_call("get_user_courses", {})]),
+            AIMessage(content="", tool_calls=[_call("get_user_mock_courses", {})]),
+            AIMessage(content="", tool_calls=[_call("get_user_mock_courses", {})]),
+            AIMessage(content="", tool_calls=[_call("get_user_mock_courses", {})]),
+            AIMessage(content="", tool_calls=[_call("get_user_mock_courses", {})]),
             AIMessage(content="Tienes 1 curso: Cálculo I."),
         ]
     )
@@ -605,7 +616,7 @@ def _selftest() -> None:
 
     llm = _ScriptedLLM(
         [
-            AIMessage(content="", tool_calls=[_call("get_user_courses", {})]),
+            AIMessage(content="", tool_calls=[_call("get_user_mock_courses", {})]),
             AIMessage(content="No pude consultar tus cursos ahora."),
         ]
     )

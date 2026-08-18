@@ -141,17 +141,17 @@ def test_get_mock_assignment_details_uses_mock_assignment_args() -> None:
 
 
 def test_mock_course_args_accepts_int() -> None:
-    """``MockCourseArgs(course_id=12)`` parses and round-trips."""
-    args = MockCourseArgs(course_id=12)
-    assert args.course_id == 12
-    assert args.model_dump() == {"course_id": 12}
+    """``MockCourseArgs(course_id_mock=12)`` parses and round-trips."""
+    args = MockCourseArgs(course_id_mock=12)
+    assert args.course_id_mock == 12
+    assert args.model_dump() == {"course_id_mock": 12}
 
 
 def test_mock_assignment_args_accepts_int() -> None:
-    """``MockAssignmentArgs(assignment_id=42)`` parses and round-trips."""
-    args = MockAssignmentArgs(assignment_id=42)
-    assert args.assignment_id == 42
-    assert args.model_dump() == {"assignment_id": 42}
+    """``MockAssignmentArgs(assignment_id_mock=42)`` parses and round-trips."""
+    args = MockAssignmentArgs(assignment_id_mock=42)
+    assert args.assignment_id_mock == 42
+    assert args.model_dump() == {"assignment_id_mock": 42}
 
 
 def test_mock_course_args_rejects_extra_keys() -> None:
@@ -159,7 +159,7 @@ def test_mock_course_args_rejects_extra_keys() -> None:
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
-        MockCourseArgs(course_id=12, tenant_id="other")  # type: ignore[call-arg]
+        MockCourseArgs(course_id_mock=12, tenant_id="other")  # type: ignore[call-arg]
 
 
 def test_tool_specs_only_advertises_mock_slots() -> None:

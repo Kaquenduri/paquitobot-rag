@@ -91,7 +91,7 @@ class AssignmentArgs(_StrictArgs):
 class MockCourseArgs(_StrictArgs):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    course_id: int = Field(
+    course_id_mock: int = Field(
         description=(
             "The course's integer id (canvas_mock_id), copied verbatim from "
             "a previous get_user_mock_courses result. Never invent or guess."
@@ -102,7 +102,7 @@ class MockCourseArgs(_StrictArgs):
 class MockAssignmentArgs(_StrictArgs):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    assignment_id: int = Field(
+    assignment_id_mock: int = Field(
         description=(
             "The assignment's integer id (canvas_mock_id), copied verbatim "
             "from a previous get_mock_course_assignments result. Never invent or guess."
@@ -435,6 +435,7 @@ def build_catalog() -> dict[str, SQLTool]:
 
 TOOL_CATALOG: dict[str, SQLTool] = build_catalog()
 TOOL_NAMES: tuple[str, ...] = tuple(TOOL_CATALOG)
+MOCK_TOOL_NAMES: frozenset[str] = frozenset(TOOL_CATALOG)
 
 
 def tool_specs() -> list[dict[str, object]]:
@@ -467,6 +468,7 @@ def tool_specs() -> list[dict[str, object]]:
 
 __all__ = [
     "SERVER_SLOTS",
+    "MOCK_TOOL_NAMES",
     "TOOL_CATALOG",
     "TOOL_NAMES",
     "AssignmentArgs",
@@ -506,7 +508,7 @@ def _selftest() -> None:
 
     # ``extra="forbid"`` blocks tenant_id smuggling through the args.
     try:
-        MockCourseArgs(course_id=12, tenant_id="other-tenant")  # type: ignore[call-arg]
+        MockCourseArgs(course_id_mock=12, tenant_id="other-tenant")  # type: ignore[call-arg]
     except ValidationError:
         pass
     else:
@@ -514,18 +516,18 @@ def _selftest() -> None:
 
     # Mock integer slots reject strings and booleans at the Pydantic boundary.
     try:
-        MockCourseArgs(course_id="12")  # type: ignore[arg-type]
+        MockCourseArgs(course_id_mock="12")  # type: ignore[arg-type]
     except ValidationError:
         pass
     else:
-        raise AssertionError("MockCourseArgs must reject string course_id")
+        raise AssertionError("MockCourseArgs must reject string course_id_mock")
 
     try:
-        MockCourseArgs(course_id=True)  # type: ignore[arg-type]
+        MockCourseArgs(course_id_mock=True)  # type: ignore[arg-type]
     except ValidationError:
         pass
     else:
-        raise AssertionError("MockCourseArgs must reject boolean course_id")
+        raise AssertionError("MockCourseArgs must reject boolean course_id_mock")
 
     # NoArgs tools accept an empty payload and nothing else.
     assert NoArgs().model_dump() == {}
@@ -540,7 +542,7 @@ def _selftest() -> None:
     assert len(specs) == 9
     by_name = {s["name"]: s for s in specs}
     assert by_name["get_user_mock_courses"]["parameters"]["properties"] == {}
-    assert by_name["get_mock_course_details"]["parameters"]["required"] == ["course_id"]
+    assert by_name["get_mock_course_details"]["parameters"]["required"] == ["course_id_mock"]
     # No declaration may advertise a free-text SQL argument.
     for spec in specs:
         props = spec["parameters"]["properties"]  # type: ignore[index]
