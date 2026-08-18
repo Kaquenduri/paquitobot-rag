@@ -256,3 +256,69 @@ def test_cross_tenant_attempt_uses_explicit_header(
     with controller_module._session_factory() as session:
         row = session.query(CanvasMockWebhookEvent).one()
         assert row.tenant_id == tenant_id
+
+
+def test_v2_handler_invoked_with_tenant_id_and_session(
+    client: TestClient, app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A custom v2 handler is invoked with the resolved tenant and session.
+
+    The PR 5 receiver ships a v1 log-only handler; the v2 handler
+    that calls the extractor / upsert pipeline is deferred to a
+    follow-up change. This test pins the registry contract so the
+    v2 handler can be plugged in without touching the controller.
+    """
+    from app.controllers.canvas_mock_webhooks import _HANDLERS
+
+    captured: dict[str, Any] = {}
+
+    def _v2_handler(tenant_id: uuid.UUID, raw_body: bytes, session: Any) -> None:
+        captured["tenant_id"] = tenant_id
+        captured["raw_body"] = raw_body
+        captured["session"] = session
+
+    monkeypatch.setitem(_HANDLERS, "grade.posted", _v2_handler)
+
+    tenant_id = _resolve_tenant_id(app)
+    body = b'{"grade_id": 7, "score": 18.0}'
+    ts = _now()
+    headers = _signed_headers(
+        "test-webhook-secret", body, ts, "grade.posted", 42
+    )
+    headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
+    response = client.post("/webhooks/canvas-mock", content=body, headers=headers)
+    assert response.status_code == 200
+    assert captured["tenant_id"] == tenant_id
+    assert captured["raw_body"] == body
+    assert captured["session"] is not None
+
+
+def test_v2_handler_raises_writes_handler_error_row(
+    client: TestClient, app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A v2 handler that raises is contained; the row's result is
+    ``handler_error`` and ``processed`` is False."""
+    from app.controllers.canvas_mock_webhooks import _HANDLERS
+
+    def _raise(tenant_id: uuid.UUID, raw_body: bytes, session: Any) -> None:
+        raise RuntimeError("handler explosion")
+
+    monkeypatch.setitem(_HANDLERS, "grade.posted", _raise)
+
+    tenant_id = _resolve_tenant_id(app)
+    body = b'{"grade_id": 7}'
+    ts = _now()
+    headers = _signed_headers(
+        "test-webhook-secret", body, ts, "grade.posted", 42
+    )
+    headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
+    response = client.post("/webhooks/canvas-mock", content=body, headers=headers)
+    # The controller returns 200 even when the handler fails; the
+    # ``result`` column is the audit trail for the failure.
+    assert response.status_code == 200
+    import app.controllers.canvas_mock_webhooks as controller_module
+
+    with controller_module._session_factory() as session:
+        row = session.query(CanvasMockWebhookEvent).one()
+        assert row.result == "handler_error"
+        assert row.processed is False

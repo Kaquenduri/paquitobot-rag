@@ -18,6 +18,7 @@ is initialised on the first request that needs it and cached afterwards.
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
@@ -198,7 +199,13 @@ class _TenantToolRuntime:
         "assignment_id_mock": "mock_assignments_list",
     }
 
-    def __init__(self, session: Any, tenant_id: Any) -> None:
+    def __init__(
+        self,
+        session: Any,
+        tenant_id: Any,
+        *,
+        mock_extractor_factory: Callable[[], Any] | None = None,
+    ) -> None:
         self._session = session
         self._tenant_id = tenant_id
         self._user_id: str | None = None
@@ -206,6 +213,11 @@ class _TenantToolRuntime:
         self._user_id_mock: int | None = None
         self._user_id_mock_loaded = False
         self._id_cache: dict[str, set[str]] = {}
+        # Optional factory for the canvas-mock extractor. When set,
+        # the runtime can refresh the ``canvas_mock_*`` tables on
+        # demand before answering a tool call. Tests inject ``None``
+        # so the extractor is never invoked.
+        self._mock_extractor_factory = mock_extractor_factory
 
     def _run_template(self, name: str, extra_slots: dict[str, Any]) -> list[dict[str, Any]]:
         # ``resolve`` needs tenant_id to render ``{{tenant_id}}``; the bind
@@ -245,6 +257,20 @@ class _TenantToolRuntime:
         self._user_id_mock = int(rows[0]["canvas_mock_id"]) if rows else None
         self._user_id_mock_loaded = True
         return self._user_id_mock
+
+    async def refresh_mock_data(self, resources: list[str]) -> dict[str, int]:
+        """Pull fresh data from the mock and upsert into ``canvas_mock_*``.
+
+        Returns the per-resource counts. When no extractor factory was
+        injected, returns an empty dict so the call is safe no-op.
+        """
+        if self._mock_extractor_factory is None:
+            return {}
+
+        extractor = self._mock_extractor_factory()
+        return await extractor.fetch_and_upsert(
+            tenant_id=self._tenant_id, resources=resources
+        )
 
     def execute(self, tool: SQLTool, args: dict[str, Any]) -> list[dict[str, Any]]:
         slots = dict(args)
