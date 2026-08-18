@@ -167,11 +167,13 @@ def create_app() -> FastAPI:
     from app.controllers.health import router as health_router
     from app.controllers.query import router as query_router
     from app.controllers.sync import router as sync_router
+    from app.controllers.sync_mock import router as sync_mock_router
 
     app.include_router(auth_router)
     app.include_router(auth_canvas_mock_router)
     app.include_router(query_router)
     app.include_router(sync_router)
+    app.include_router(sync_mock_router)
     app.include_router(health_router)
     app.include_router(canvas_mock_webhooks_router)
 
