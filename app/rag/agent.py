@@ -188,6 +188,8 @@ class SQLToolRuntime:
 _ID_SLOT_HINT = {
     "course_id": "get_user_courses",
     "assignment_id": "get_course_assignments",
+    "course_id_mock": "get_user_mock_courses",
+    "assignment_id_mock": "get_mock_course_assignments",
 }
 
 
@@ -235,17 +237,28 @@ def _validate_call(
     for slot, value in args.items():
         if slot not in _ID_SLOT_HINT:
             continue
-        # Format first: a non-UUID string against a uuid column is a
-        # database type error, not an empty result set.
-        try:
-            uuid.UUID(str(value))
-        except (ValueError, AttributeError, TypeError) as exc:
-            raise ToolCallRejected(
-                f"{slot}={value!r} is not a valid id. Call "
-                f"{_ID_SLOT_HINT[slot]} first and copy an id from its result."
-            ) from exc
+        # Format check first: a malformed value against a typed column
+        # is a database type error, not an empty result set. The
+        # validator dispatch is selected by the tool's ``slot_type``
+        # (UUID-by-default, integer for the mock tools).
+        if tool.slot_type == "int":
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise ToolCallRejected(
+                    f"{slot}={value!r} is not a valid integer id. Call "
+                    f"{_ID_SLOT_HINT[slot]} first and copy an id from its result."
+                )
+            serialized = str(value)
+        else:
+            try:
+                uuid.UUID(str(value))
+            except (ValueError, AttributeError, TypeError) as exc:
+                raise ToolCallRejected(
+                    f"{slot}={value!r} is not a valid id. Call "
+                    f"{_ID_SLOT_HINT[slot]} first and copy an id from its result."
+                ) from exc
+            serialized = str(value)
         # Then grounding: the id must belong to this student.
-        if str(value) not in runtime.known_ids(slot):
+        if serialized not in runtime.known_ids(slot):
             raise ToolCallRejected(
                 f"{slot}={value!r} does not belong to this student. Call "
                 f"{_ID_SLOT_HINT[slot]} and copy an id from its result."
