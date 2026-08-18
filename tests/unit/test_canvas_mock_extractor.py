@@ -17,25 +17,17 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy.exc import DataError, IntegrityError
 
 from app.models import (
     CanvasMockAssignment,
     CanvasMockAttendanceRecord,
     CanvasMockCourse,
     CanvasMockGrade,
-    CanvasMockUser,
 )
 from app.services.canvas_mock_client import CanvasMockClient
 from app.services.canvas_mock_extractor import (
     CanvasMockExtractor,
     CanvasMockShapeError,
-)
-from app.schemas.canvas_mock import (
-    CanvasMockAssignmentDTO,
-    CanvasMockAttendanceRecordDTO,
-    CanvasMockCourseDTO,
-    CanvasMockGradeDTO,
 )
 
 
@@ -138,11 +130,13 @@ def test_extractor_rejects_malformed_with_zero_rows(db_session: Any) -> None:
 
 def test_extractor_4xx_no_persist(db_session: Any) -> None:
     """A 4xx response raises without writing any rows."""
+    from app.services.canvas_mock_client import CanvasMockError
+
     client = _client({})
     client.get = _stub_404  # type: ignore[method-assign]
     tenant = uuid.uuid4()
     extractor = CanvasMockExtractor(client=client, session_factory=lambda: db_session)
-    with pytest.raises(Exception):
+    with pytest.raises(CanvasMockError):
         _run(extractor.fetch_and_upsert(tenant_id=tenant, resources=["courses"]))
     db_session.rollback()
     count = db_session.query(CanvasMockCourse).count()
