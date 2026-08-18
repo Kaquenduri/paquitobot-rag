@@ -4,11 +4,18 @@ PR 1 introduces the ``python_executable`` and ``app_settings``
 fixtures; PR 3 adds a per-test SQLite engine + session so unit
 tests can exercise the SQLAlchemy models and the repository helpers
 without touching the real Supabase database.
+
+PR 5 adds a ``webhook_signer`` factory for the canvas-mock webhook
+tests and a ``webhook_subscription`` factory that seeds a row in
+``canvas_mock_webhook_subscriptions`` so the receiver can resolve
+the tenant by ``target_url``.
 """
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Generator
+from typing import Any
 
 import pytest
 from sqlalchemy.engine import Engine
@@ -83,3 +90,61 @@ def db_session(sqlite_engine: Engine) -> Generator[Session]:
         yield session
     finally:
         session.close()
+
+
+# ---------------------------------------------------------------------------
+# Webhook (PR 5)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def webhook_signer() -> Any:
+    """Return a helper that builds signed headers for a webhook delivery.
+
+    Usage::
+
+        head = webhook_signer(tenant_id, body=b'{"x":1}')("overridden")
+        # head is now a dict with X-Canvas-Mock-Signature, etc.
+    """
+
+    import time
+    import uuid
+    from app.security.webhook_hmac import compute_signature
+
+    secret = "test-webhook-secret"
+
+    def _make(tenant_id: Any, body: bytes, event: str = "grade.posted", resource_id: int = 42):
+        def _factory(alt_body: str = "") -> dict[str, str]:
+            ts = int(time.time())
+            payload = body if alt_body == "" else alt_body.encode("utf-8")
+            sig = compute_signature(secret, ts, payload)
+            return {
+                "X-Canvas-Mock-Signature": f"t={ts},v1={sig}",
+                "X-Canvas-Mock-Event": event,
+                "X-Canvas-Mock-Delivery": str(uuid.uuid4()),
+                "X-Canvas-Mock-Timestamp": str(ts),
+                "X-Canvas-Mock-Attempt": "1",
+                "X-Canvas-Mock-Resource-Id": str(resource_id),
+                "X-Canvas-Mock-Tenant-Id": str(tenant_id),
+                "Content-Type": "application/json",
+            }
+
+        return _factory
+
+    return _make
+
+
+@pytest.fixture
+def webhook_subscription(db_session: Session) -> Any:
+    """Insert a :class:`CanvasMockWebhookSubscription` row and return it."""
+    from app.models import CanvasMockWebhookSubscription
+
+    sub = CanvasMockWebhookSubscription(
+        tenant_id=uuid.uuid4(),
+        target_url="https://example.com/hooks/canvas-mock",
+        secret="test-webhook-secret",
+        event_types=["grade.posted", "assignment.created", "assignment.updated"],
+    )
+    db_session.add(sub)
+    db_session.commit()
+    return sub
