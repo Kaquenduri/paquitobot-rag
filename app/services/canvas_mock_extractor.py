@@ -37,7 +37,7 @@ cannot be reached by a self-service caller.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
@@ -62,6 +62,8 @@ from app.schemas.canvas_mock import (
 from app.services.canvas_mock_client import CanvasMockClient, CanvasMockError
 
 logger = get_logger("app.services.canvas_mock_extractor")
+
+T_DTO = TypeVar("T_DTO", bound=BaseModel)
 
 
 class CanvasMockShapeError(Exception):
@@ -142,18 +144,18 @@ class CanvasMockExtractor:
 
     async def fetch_courses(self) -> list[CanvasMockCourseDTO]:
         rows = await self._fetch_all(PATH_COURSES)
-        return self._validate_dtos(rows, CanvasMockCourseDTO, "courses")
+        return self._validate_dtos_typed(rows, CanvasMockCourseDTO, "courses")
 
     async def fetch_grades(self) -> list[CanvasMockGradeDTO]:
         rows = await self._fetch_all(PATH_GRADES)
-        return self._validate_dtos(rows, CanvasMockGradeDTO, "grades")
+        return self._validate_dtos_typed(rows, CanvasMockGradeDTO, "grades")
 
     async def fetch_attendance(self) -> list[CanvasMockAttendanceRecordDTO]:
         rows = await self._fetch_all(
             PATH_ATTENDANCE,
             params={"days": ATTENDANCE_DAYS_DEFAULT},
         )
-        return self._validate_dtos(
+        return self._validate_dtos_typed(
             rows, CanvasMockAttendanceRecordDTO, "attendance"
         )
 
@@ -162,14 +164,18 @@ class CanvasMockExtractor:
     ) -> list[CanvasMockAssignmentDTO]:
         path = PATH_COURSE_ASSIGNMENTS.format(course_id=course_id)
         rows = await self._fetch_all(path)
-        return self._validate_dtos(rows, CanvasMockAssignmentDTO, "assignments")
+        return self._validate_dtos_typed(
+            rows, CanvasMockAssignmentDTO, "assignments"
+        )
 
     async def fetch_class_sessions_for_course(
         self, course_id: int
     ) -> list[CanvasMockClassSessionDTO]:
         path = PATH_COURSE_CLASS_SESSIONS.format(course_id=course_id)
         rows = await self._fetch_all(path)
-        return self._validate_dtos(rows, CanvasMockClassSessionDTO, "class_sessions")
+        return self._validate_dtos_typed(
+            rows, CanvasMockClassSessionDTO, "class_sessions"
+        )
 
     def _validate_dtos(
         self,
@@ -201,13 +207,42 @@ class CanvasMockExtractor:
                 ) from exc
         return out
 
+    def _validate_dtos_typed(
+        self,
+        rows: list[dict[str, Any]],
+        dto: type[T_DTO],
+        resource: str,
+    ) -> list[T_DTO]:
+        """Same as :meth:`_validate_dtos` but typed for the caller.
+
+        The runtime behaviour is identical; the dedicated method just
+        lets mypy narrow the return type to ``dto`` without a cast.
+        """
+        out: list[T_DTO] = []
+        for index, row in enumerate(rows):
+            if not isinstance(row, dict):
+                raise CanvasMockShapeError(
+                    f"{resource}[{index}] is not a JSON object",
+                    index=index,
+                    resource=resource,
+                )
+            try:
+                out.append(dto.model_validate(row))
+            except ValidationError as exc:
+                raise CanvasMockShapeError(
+                    f"{resource}[{index}] failed Pydantic validation: {exc}",
+                    index=index,
+                    resource=resource,
+                ) from exc
+        return out
+
     # -- upsert stage -----------------------------------------------------
 
     async def _upsert(
         self,
         tenant_id: Any,
-        model: type[BaseModel],
-        rows: list[BaseModel],
+        model: type[Any],
+        rows: list[Any],
         *,
         attribute_map: dict[str, str],
         natural_key: str,
@@ -375,24 +410,62 @@ class CanvasMockExtractor:
         Raises :class:`CanvasMockShapeError` on any per-row failure;
         the transaction is rolled back so the database stays consistent.
 
-        ``resources`` accepts ``"courses"``, ``"attendance"``, and
-        ``"grades"``. ``"assignments"`` is **not** supported — the
-        mock exposes no self-service assignment endpoint, only
-        admin-only routes under ``/admin/*``.
+        ``resources`` accepts ``"courses"``, ``"assignments"``,
+        ``"class_sessions"``, ``"attendance"``, and ``"grades"``.
+
+        ``"assignments"`` and ``"class_sessions"`` are fetched
+        **per-course** (the canvas-mock-api exposes them under
+        ``/users/self/courses/{id}/...``), so the courses endpoint is
+        hydrated first when any of those two is requested. The fan-out
+        is sequential: one request per course, one transaction per
+        resource.
         """
         counts: dict[str, int] = {}
+
+        courses: list[CanvasMockCourseDTO] | None = None
+        if any(
+            r in resources for r in ("courses", "assignments", "class_sessions")
+        ):
+            courses = await self.fetch_courses()
+            if "courses" in resources:
+                counts["courses"] = await self.upsert_courses(tenant_id, courses)
+
+        if "assignments" in resources:
+            assert courses is not None
+            total = 0
+            for course in courses:
+                assignment_rows = await self.fetch_assignments_for_course(course.id)
+                total += await self.upsert_assignments(tenant_id, assignment_rows)
+            counts["assignments"] = total
+
+        if "class_sessions" in resources:
+            assert courses is not None
+            total = 0
+            for course in courses:
+                session_rows = await self.fetch_class_sessions_for_course(course.id)
+                total += await self.upsert_class_sessions(tenant_id, session_rows)
+            counts["class_sessions"] = total
+
+        if "attendance" in resources:
+            attendance_rows = await self.fetch_attendance()
+            counts["attendance"] = await self.upsert_attendance(
+                tenant_id, attendance_rows
+            )
+
+        if "grades" in resources:
+            grade_rows = await self.fetch_grades()
+            counts["grades"] = await self.upsert_grades(tenant_id, grade_rows)
+
         for resource in resources:
-            if resource == "courses":
-                rows = await self.fetch_courses()
-                counts["courses"] = await self.upsert_courses(tenant_id, rows)
-            elif resource == "grades":
-                rows = await self.fetch_grades()
-                counts["grades"] = await self.upsert_grades(tenant_id, rows)
-            elif resource == "attendance":
-                rows = await self.fetch_attendance()
-                counts["attendance"] = await self.upsert_attendance(tenant_id, rows)
-            else:
+            if resource not in (
+                "courses",
+                "assignments",
+                "class_sessions",
+                "attendance",
+                "grades",
+            ):
                 raise CanvasMockError(f"unknown resource: {resource}")
+
         return counts
 
 
