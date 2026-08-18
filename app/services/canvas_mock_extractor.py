@@ -40,12 +40,15 @@ from collections.abc import Callable
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.models import (
+    CanvasMockAssignment,
     CanvasMockAttendanceRecord,
+    CanvasMockClassSession,
     CanvasMockCourse,
     CanvasMockGrade,
 )
@@ -216,6 +219,12 @@ class CanvasMockExtractor:
         the DTO attribute name whose value is paired with
         ``tenant_id`` to detect duplicates.
 
+        Each row is looked up by ``(tenant_id, natural_key_column)``;
+        if found, the existing row is updated in place; otherwise a
+        new row is inserted. This satisfies the natural-key uniqueness
+        declared on every ``canvas_mock_*`` table so a second upsert
+        on the same key is a no-op rather than a constraint violation.
+
         Returns the number of rows that landed (positive integer).
         Raises :class:`CanvasMockShapeError` if any row produces a
         SQL error (the transaction is rolled back by the caller).
@@ -238,7 +247,19 @@ class CanvasMockExtractor:
                             index=index,
                             resource=model.__name__,
                         )
-                    session.merge(model(**payload))
+                    natural_key_value = payload[natural_key_column]
+                    existing = session.execute(
+                        select(model).where(
+                            model.tenant_id == tenant_id,
+                            getattr(model, natural_key_column)
+                            == natural_key_value,
+                        )
+                    ).scalar_one_or_none()
+                    if existing is None:
+                        session.add(model(**payload))
+                    else:
+                        for key, value in payload.items():
+                            setattr(existing, key, value)
                 except SQLAlchemyError as exc:
                     raise CanvasMockShapeError(
                         f"db error: {exc.__class__.__name__}",
@@ -299,6 +320,47 @@ class CanvasMockExtractor:
                 "status": "status",
             },
             natural_key="class_session_id",
+        )
+
+    async def upsert_assignments(
+        self, tenant_id: Any, assignments: list[CanvasMockAssignmentDTO]
+    ) -> int:
+        return await self._upsert(
+            tenant_id,
+            CanvasMockAssignment,
+            assignments,
+            attribute_map={
+                "id": "canvas_mock_id",
+                "course_id": "course_canvas_mock_id",
+                "name": "name",
+                "description": "description",
+                "points_possible": "points_possible",
+                "due_at": "due_at",
+                "grading_type": "grading_type",
+                "submission_types": "submission_types",
+                "workflow_state": "workflow_state",
+                "html_url": "html_url",
+                "url": "url",
+                "created_at": "created_at_mock",
+                "updated_at": "updated_at_mock",
+            },
+            natural_key="id",
+        )
+
+    async def upsert_class_sessions(
+        self, tenant_id: Any, class_sessions: list[CanvasMockClassSessionDTO]
+    ) -> int:
+        return await self._upsert(
+            tenant_id,
+            CanvasMockClassSession,
+            class_sessions,
+            attribute_map={
+                "id": "canvas_mock_id",
+                "course_id": "course_canvas_mock_id",
+                "start_at": "start_at",
+                "end_at": "end_at",
+            },
+            natural_key="id",
         )
 
     # -- end-to-end helper ------------------------------------------------
