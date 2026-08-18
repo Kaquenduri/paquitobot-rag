@@ -9,7 +9,6 @@ keeps everything in-process — no real network involved.
 from __future__ import annotations
 
 import asyncio
-import json
 from typing import Any
 
 import httpx

@@ -146,14 +146,13 @@ class CanvasMockClient:
             "Authorization": f"Bearer {self._jwt_token}",
         }
 
-        strike = 0
         last_exc: Exception | None = None
 
         # Manual retry loop so the recorded delays match the locked
         # schedule ``[0.5, 2.0]`` exactly (the design notes 0.5/2.0/8.0
         # but only two waits exist between three attempts; the third
         # attempt is the last and does not wait).
-        for attempt in range(RETRY_ATTEMPTS):
+        for strike in range(RETRY_ATTEMPTS):
             try:
                 response = await self._client.request(
                     method, path, headers=headers
@@ -172,14 +171,13 @@ class CanvasMockClient:
                     )
                 else:
                     return response.json()
-            strike += 1
-            if strike >= RETRY_ATTEMPTS:
+            if strike + 1 >= RETRY_ATTEMPTS:
                 assert last_exc is not None
                 raise last_exc
             # Sleep per the locked schedule; the LAST entry is reused
             # so even a hypothetical 4th attempt would still backoff.
             wait_seconds = self._wait_schedule[
-                min(strike - 1, len(self._wait_schedule) - 1)
+                min(strike, len(self._wait_schedule) - 1)
             ]
             await asyncio.sleep(wait_seconds)
 
@@ -195,10 +193,10 @@ class CanvasMockClient:
 
 
 __all__ = [
+    "REQUEST_TIMEOUT_SECONDS",
+    "RETRY_ATTEMPTS",
+    "RETRY_WAIT_SCHEDULE_SECONDS",
     "CanvasMockClient",
     "CanvasMockError",
     "CanvasMockTransientError",
-    "RETRY_ATTEMPTS",
-    "RETRY_WAIT_SCHEDULE_SECONDS",
-    "REQUEST_TIMEOUT_SECONDS",
 ]
