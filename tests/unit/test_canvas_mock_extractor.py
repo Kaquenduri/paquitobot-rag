@@ -516,3 +516,96 @@ def test_extractor_upsert_class_sessions_idempotent_on_natural_key(
         db_session.query(CanvasMockClassSession).filter_by(tenant_id=tenant).all()
     )
     assert len(fetched) == 1
+
+
+# ---------------------------------------------------------------------------
+# Fan-out: fetch_and_upsert calls per-course endpoints for each course
+# ---------------------------------------------------------------------------
+
+
+def test_extractor_fetch_and_upsert_fans_out_per_course_endpoints(
+    db_session: Any,
+) -> None:
+    """``fetch_and_upsert`` MUST fan out to per-course endpoints."""
+    client, captured = _recording_client(
+        {
+            "/users/self/courses": [
+                {
+                    "id": 42,
+                    "name": "Cálculo I",
+                    "course_code": "CALC-1",
+                    "workflow_state": "available",
+                },
+                {
+                    "id": 43,
+                    "name": "Álgebra",
+                    "course_code": "ALG-1",
+                    "workflow_state": "available",
+                },
+            ],
+            "/users/self/courses/42/assignments": [
+                {
+                    "id": 501,
+                    "course_id": 42,
+                    "name": "TP1",
+                    "points_possible": 10.0,
+                },
+            ],
+            "/users/self/courses/43/assignments": [
+                {
+                    "id": 601,
+                    "course_id": 43,
+                    "name": "TP1",
+                    "points_possible": 10.0,
+                },
+                {
+                    "id": 602,
+                    "course_id": 43,
+                    "name": "TP2",
+                    "points_possible": 20.0,
+                },
+            ],
+            "/users/self/courses/42/class_sessions": [
+                {
+                    "id": 9001,
+                    "course_id": 42,
+                    "start_at": "2026-08-18T10:00:00+00:00",
+                },
+            ],
+            "/users/self/courses/43/class_sessions": [
+                {
+                    "id": 9101,
+                    "course_id": 43,
+                    "start_at": "2026-08-19T10:00:00+00:00",
+                },
+            ],
+        }
+    )
+    tenant = uuid.uuid4()
+    extractor = CanvasMockExtractor(
+        client=client, session_factory=lambda: db_session
+    )
+    counts = _run(
+        extractor.fetch_and_upsert(
+            tenant_id=tenant,
+            resources=["courses", "assignments", "class_sessions"],
+        )
+    )
+    requested_paths = [r.url.path for r in captured]
+    assert "/users/self/courses" in requested_paths
+    assert "/users/self/courses/42/assignments" in requested_paths
+    assert "/users/self/courses/43/assignments" in requested_paths
+    assert "/users/self/courses/42/class_sessions" in requested_paths
+    assert "/users/self/courses/43/class_sessions" in requested_paths
+    assert counts["courses"] == 2
+    assert counts["assignments"] == 3
+    assert counts["class_sessions"] == 2
+    db_session.commit()
+    assignments = (
+        db_session.query(CanvasMockAssignment).filter_by(tenant_id=tenant).all()
+    )
+    sessions = (
+        db_session.query(CanvasMockClassSession).filter_by(tenant_id=tenant).all()
+    )
+    assert len(assignments) == 3
+    assert len(sessions) == 2
