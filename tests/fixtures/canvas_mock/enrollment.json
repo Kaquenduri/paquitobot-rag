@@ -1,0 +1,7 @@
+{
+  "id": 9001,
+  "user_id": 77,
+  "course_id": 101,
+  "type": "StudentEnrollment",
+  "enrollment_state": "active"
+}
