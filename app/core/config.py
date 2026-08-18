@@ -111,6 +111,30 @@ class Settings(BaseSettings):
             "scheduler's HMAC cannot impersonate a webhook delivery."
         ),
     )
+    canvas_mock_api_base_url: str = Field(
+        ...,
+        description=(
+            "Base URL of the canvas-mock-api (PR 4). The extractor sends "
+            "requests here when refreshing canvas_mock_* rows."
+        ),
+    )
+    canvas_mock_api_key: str = Field(
+        ...,
+        description=(
+            "API key sent in the X-Api-Key header on every extractor "
+            "request. The mock uses the prefix to derive the role; the full "
+            "secret is never echoed back."
+        ),
+    )
+    canvas_mock_jwt_secret: str = Field(
+        ...,
+        description=(
+            "HS256 secret used to mint the backend JWT the extractor sends "
+            "in the Authorization: Bearer header. Same secret family as "
+            "BACKEND_SECRET but kept as a distinct setting so the mock "
+            "and the production backend can rotate independently."
+        ),
+    )
 
     # --- Embedding model ---
     ollama_embedding_model: str = Field(

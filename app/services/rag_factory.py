@@ -421,6 +421,9 @@ def _selftest() -> None:
         canvas_api_base_url="https://canvas.invalid/api/v1",
         google_client_id="selftest.apps.googleusercontent.com",
         canvas_mock_webhook_secret="selftest-canvas-mock-webhook-secret",
+        canvas_mock_api_base_url="https://canvas-mock.invalid/api/v1",
+        canvas_mock_api_key="adm_selftest_key",
+        canvas_mock_jwt_secret="selftest-canvas-mock-jwt-secret",
     )
     service = build_rag_service(settings, db_session_factory=get_db_session)
     assert service is not None

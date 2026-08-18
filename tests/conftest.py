@@ -43,6 +43,9 @@ def app_settings(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
         "SCHEDULER_ENABLED": "false",
         "DISABLE_RAG_ROUTES": "true",
         "CANVAS_MOCK_WEBHOOK_SECRET": "test-only-canvas-mock-webhook-secret",
+        "CANVAS_MOCK_API_BASE_URL": "https://canvas-mock.invalid/api/v1",
+        "CANVAS_MOCK_API_KEY": "adm_test_key",
+        "CANVAS_MOCK_JWT_SECRET": "test-only-canvas-mock-jwt-secret",
     }
     for key, value in overrides.items():
         monkeypatch.setenv(key, value)
