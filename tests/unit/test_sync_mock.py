@@ -38,7 +38,9 @@ from app.core.db import engine_for_url, session_factory_for
 from app.middleware.correlation_id import CorrelationIdMiddleware
 from app.models import (
     Base,
+    CanvasMockAssignment,
     CanvasMockAttendanceRecord,
+    CanvasMockClassSession,
     CanvasMockCourse,
     CanvasMockGrade,
     CanvasMockUser,
@@ -238,6 +240,35 @@ def test_sync_mock_happy_path_returns_counts(
                     }
                 ],
             )
+        if request.url.path == "/api/v1/users/self/courses/101/assignments":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 501,
+                        "course_id": 101,
+                        "name": "TP1",
+                        "points_possible": 10.0,
+                    },
+                    {
+                        "id": 502,
+                        "course_id": 101,
+                        "name": "TP2",
+                        "points_possible": 20.0,
+                    },
+                ],
+            )
+        if request.url.path == "/api/v1/users/self/courses/101/class_sessions":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 9001,
+                        "course_id": 101,
+                        "start_at": "2026-08-18T10:00:00Z",
+                    },
+                ],
+            )
         if request.url.path == "/api/v1/users/self/attendance":
             return httpx.Response(
                 200,
@@ -284,6 +315,8 @@ def test_sync_mock_happy_path_returns_counts(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["synced"]["courses"] == 1
+    assert body["synced"]["assignments"] == 2
+    assert body["synced"]["class_sessions"] == 1
     assert body["synced"]["attendance"] == 1
     assert body["synced"]["grades"] == 2
     assert "tenant_id" in body
@@ -292,9 +325,13 @@ def test_sync_mock_happy_path_returns_counts(
         courses = session.execute(select(CanvasMockCourse)).scalars().all()
         grades = session.execute(select(CanvasMockGrade)).scalars().all()
         attendance = session.execute(select(CanvasMockAttendanceRecord)).scalars().all()
+        assignments = session.execute(select(CanvasMockAssignment)).scalars().all()
+        sessions = session.execute(select(CanvasMockClassSession)).scalars().all()
     assert len(courses) == 1
     assert len(grades) == 2
     assert len(attendance) == 1
+    assert len(assignments) == 2
+    assert len(sessions) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -387,3 +424,86 @@ def test_sync_mock_targets_mock_not_real_canvas(
     for headers in captured_headers:
         assert headers.get("x-api-key") == "adm_001"
         assert headers.get("authorization", "").startswith("Bearer ")
+
+
+# ---------------------------------------------------------------------------
+# Per-course fan-out surfaces in the response body
+# ---------------------------------------------------------------------------
+
+
+def test_sync_mock_response_includes_assignments_and_class_sessions_counts(
+    sync_mock_app: tuple[FastAPI, sessionmaker, Engine],
+) -> None:
+    """The 200 response body MUST include assignments + class_sessions counts.
+
+    Even when the mock returns empty lists for the per-course endpoints,
+    the response body must still surface those keys (zero) so the
+    client can read a stable sync-state shape.
+    """
+    _, factory, _engine = sync_mock_app
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[])
+
+    _seed_mock_user(factory, api_key_prefix="stu_001")
+    app = _make_app_with_handler(factory, _handler)
+    with TestClient(app) as client:
+        response = client.post(
+            "/sync-mock",
+            headers={
+                "Authorization": "Bearer selftest-backend-token",
+                "X-Canvas-Mock-Api-Key": "stu_001",
+            },
+        )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert "assignments" in body["synced"]
+    assert "class_sessions" in body["synced"]
+    assert body["synced"]["assignments"] == 0
+    assert body["synced"]["class_sessions"] == 0
+
+
+def test_sync_mock_fans_out_per_course_endpoint(
+    sync_mock_app: tuple[FastAPI, sessionmaker, Engine],
+) -> None:
+    """The extractor MUST hit the per-course endpoints when courses exist."""
+    _, factory, _engine = sync_mock_app
+    captured_paths: list[str] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        captured_paths.append(request.url.path)
+        if request.url.path == "/api/v1/users/self/courses":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 101,
+                        "name": "Cálculo I",
+                        "course_code": "CALC-1",
+                        "workflow_state": "available",
+                    },
+                    {
+                        "id": 102,
+                        "name": "Álgebra",
+                        "course_code": "ALG-1",
+                        "workflow_state": "available",
+                    },
+                ],
+            )
+        return httpx.Response(200, json=[])
+
+    _seed_mock_user(factory, api_key_prefix="stu_001")
+    app = _make_app_with_handler(factory, _handler)
+    with TestClient(app) as client:
+        response = client.post(
+            "/sync-mock",
+            headers={
+                "Authorization": "Bearer selftest-backend-token",
+                "X-Canvas-Mock-Api-Key": "stu_001",
+            },
+        )
+    assert response.status_code == 200, response.text
+    assert "/api/v1/users/self/courses/101/assignments" in captured_paths
+    assert "/api/v1/users/self/courses/101/class_sessions" in captured_paths
+    assert "/api/v1/users/self/courses/102/assignments" in captured_paths
+    assert "/api/v1/users/self/courses/102/class_sessions" in captured_paths
