@@ -121,8 +121,40 @@ def require_tenant_token(
     return tenant_id, plaintext
 
 
+def require_tenant_mock(
+    request: Request,
+    tenant_id: Annotated[UUID, Depends(require_tenant)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[Session, Depends(get_db_session)],
+) -> tuple[UUID, str]:
+    """FastAPI dependency: resolve the canvas-mock prefix for the tenant.
+
+    Mirror of :func:`require_tenant_token` for the canvas-mock flow.
+    The full API key is never persisted (the connect controller only
+    stores its first 8 characters, see
+    :mod:`app.controllers.auth_canvas_mock`); the dependency returns
+    ``(tenant_id, api_key_prefix)`` so the request handler can
+    validate the tenant has registered a mock key without ever
+    needing the raw secret.
+
+    Returns 403 when no ``canvas_mock_users`` row exists for the
+    tenant, mirroring the legacy dep's behaviour for missing
+    credentials. The JWT step is unchanged.
+    """
+    service = _tenant_service_for_request(request, session, settings)
+    try:
+        prefix = service.get_mock_api_key_prefix(tenant_id)
+    except TenantNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="no Canvas-mock credentials for tenant",
+        ) from exc
+    return tenant_id, prefix
+
+
 __all__ = [
     "require_tenant",
+    "require_tenant_mock",
     "require_tenant_token",
     "verify_backend_jwt_dependency",
 ]
