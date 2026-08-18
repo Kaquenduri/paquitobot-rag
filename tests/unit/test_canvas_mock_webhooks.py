@@ -20,7 +20,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.controllers.canvas_mock_webhooks import router as webhook_router
-from app.models import Base, CanvasMockWebhookEvent, CanvasMockWebhookSubscription
+from app.models import (
+    Base,
+    CanvasMockAssignment,
+    CanvasMockGrade,
+    CanvasMockWebhookEvent,
+    CanvasMockWebhookSubscription,
+)
 from app.security.webhook_hmac import compute_signature
 
 
@@ -322,3 +328,132 @@ def test_v2_handler_raises_writes_handler_error_row(
         row = session.query(CanvasMockWebhookEvent).one()
         assert row.result == "handler_error"
         assert row.processed is False
+
+
+# ---------------------------------------------------------------------------
+# v2: handlers actually upsert the payload into the canvas_mock_* tables.
+# ---------------------------------------------------------------------------
+
+
+def test_v2_assignment_created_upserts_assignment_row(
+    client: TestClient, app: FastAPI
+) -> None:
+    """``assignment.created`` lands the payload in ``canvas_mock_assignments``.
+
+    The v2 handler validates the JSON body as
+    :class:`CanvasMockAssignmentDTO` and delegates to
+    :meth:`CanvasMockExtractor.upsert_assignments`, which uses the
+    natural key ``(tenant_id, canvas_mock_id)`` for idempotency.
+    """
+    tenant_id = _resolve_tenant_id(app)
+    payload = (
+        b"{"
+        b'"id": 501, "course_id": 42, "name": "Limits", '
+        b'"description": "Limits intro", "points_possible": 100.0, '
+        b'"grading_type": "points", "workflow_state": "published"'
+        b"}"
+    )
+    ts = _now()
+    headers = _signed_headers(
+        "test-webhook-secret", payload, ts, "assignment.created", 501
+    )
+    headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
+    response = client.post("/webhooks/canvas-mock", content=payload, headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "queued"
+
+    import app.controllers.canvas_mock_webhooks as controller_module
+
+    with controller_module._session_factory() as session:
+        rows = (
+            session.query(CanvasMockAssignment)
+            .filter_by(tenant_id=tenant_id, canvas_mock_id=501)
+            .all()
+        )
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.name == "Limits"
+        assert row.description == "Limits intro"
+        assert row.points_possible == 100.0
+        assert row.grading_type == "points"
+        assert row.workflow_state == "published"
+        assert row.course_canvas_mock_id == 42
+
+
+def test_v2_assignment_updated_upserts_assignment_row(
+    client: TestClient, app: FastAPI
+) -> None:
+    """``assignment.updated`` writes (or refreshes) the same assignment row.
+
+    Same handler body as ``assignment.created`` — the controller
+    dispatches both events to the same upsert pipeline.
+    """
+    tenant_id = _resolve_tenant_id(app)
+    payload = (
+        b"{"
+        b'"id": 502, "course_id": 42, "name": "Limits (renamed)", '
+        b'"points_possible": 80.0, "workflow_state": "published"'
+        b"}"
+    )
+    ts = _now()
+    headers = _signed_headers(
+        "test-webhook-secret", payload, ts, "assignment.updated", 502
+    )
+    headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
+    response = client.post("/webhooks/canvas-mock", content=payload, headers=headers)
+    assert response.status_code == 200, response.text
+
+    import app.controllers.canvas_mock_webhooks as controller_module
+
+    with controller_module._session_factory() as session:
+        row = (
+            session.query(CanvasMockAssignment)
+            .filter_by(tenant_id=tenant_id, canvas_mock_id=502)
+            .one()
+        )
+        assert row.name == "Limits (renamed)"
+        assert row.points_possible == 80.0
+        assert row.course_canvas_mock_id == 42
+
+
+def test_v2_grade_posted_upserts_grade_row(
+    client: TestClient, app: FastAPI
+) -> None:
+    """``grade.posted`` upserts one row into ``canvas_mock_grades``.
+
+    The extractor uses ``(tenant_id, assignment_canvas_mock_id)`` as
+    the natural key (matching the existing
+    :meth:`CanvasMockExtractor.upsert_grades` contract).
+    """
+    tenant_id = _resolve_tenant_id(app)
+    payload = (
+        b"{"
+        b'"assignment_id": 99, "user_id": 7, '
+        b'"score": 18.0, "grade": "B+", '
+        b'"graded_at": "2026-08-18T12:00:00Z", '
+        b'"grader_id": 3'
+        b"}"
+    )
+    ts = _now()
+    headers = _signed_headers(
+        "test-webhook-secret", payload, ts, "grade.posted", 99
+    )
+    headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
+    response = client.post("/webhooks/canvas-mock", content=payload, headers=headers)
+    assert response.status_code == 200, response.text
+
+    import app.controllers.canvas_mock_webhooks as controller_module
+
+    with controller_module._session_factory() as session:
+        row = (
+            session.query(CanvasMockGrade)
+            .filter_by(
+                tenant_id=tenant_id,
+                assignment_canvas_mock_id=99,
+                user_canvas_mock_id=7,
+            )
+            .one()
+        )
+        assert row.score == 18.0
+        assert row.grade == "B+"
+        assert row.grader_id == 3
