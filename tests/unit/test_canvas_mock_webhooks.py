@@ -219,15 +219,21 @@ def test_timestamp_drift_returns_401(client: TestClient, app: FastAPI) -> None:
 def test_handler_error_writes_signature_failed_row(client: TestClient, app: FastAPI) -> None:
     """A handler that raises still logs the row with ``result='handler_error'``.
 
-    The v1 handler is log-only; raise simulation is exercised via a
-    dedicated test in the v2 task tree. This test pins the log-only
-    happy path.
+    A v2 handler that executes successfully is marked
+    ``result='processed'`` with ``processed=True``. The actual
+    raise-in-handler contract is exercised by
+    :func:`test_v2_handler_raises_writes_handler_error_row` below.
     """
     tenant_id = _resolve_tenant_id(app)
-    body = b'{"grade_id": 7}'
+    body = (
+        b"{"
+        b'"assignment_id": 9, "user_id": 7, '
+        b'"score": 15.0, "grade": "C"'
+        b"}"
+    )
     ts = _now()
     headers = _signed_headers(
-        "test-webhook-secret", body, ts, "grade.posted", 42
+        "test-webhook-secret", body, ts, "grade.posted", 9
     )
     headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
     response = client.post("/webhooks/canvas-mock", content=body, headers=headers)

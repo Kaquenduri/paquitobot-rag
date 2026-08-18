@@ -26,8 +26,11 @@ The endpoint is ``POST /webhooks/canvas-mock``. The pipeline is:
    returns 200 ``{"status": "duplicate"}`` and does NOT re-execute
    the handler.
 
-5. **Handler dispatch.** v1 handlers are log-only. v2 (deferred to
-   a follow-up change) will call the extractor / upsert pipeline.
+5. **Handler dispatch.** v2 handlers are async and call the
+   :class:`CanvasMockExtractor` upsert pipeline (``upsert_assignments``
+   for ``assignment.{created,updated}``, ``upsert_grades`` for
+   ``grade.posted``). The endpoint ``await``s each handler; sync
+   handlers remain backward-compatible (``await None`` is a no-op).
 
 6. **Persistence.** Whether or not the handler succeeded, a row is
    written to ``canvas_mock_webhook_events`` with the resulting
@@ -53,6 +56,8 @@ from app.models import CanvasMockWebhookEvent, CanvasMockWebhookSubscription
 from app.security.webhook_hmac import (
     verify_signature,
 )
+from app.services.canvas_mock_client import CanvasMockClient
+from app.services.canvas_mock_extractor import CanvasMockExtractor
 
 logger = get_logger("app.controllers.canvas_mock_webhooks")
 
@@ -120,44 +125,81 @@ def _resolve_tenant_id(session: Session, target_url: str) -> uuid.UUID | None:
 
 
 # ---------------------------------------------------------------------------
-# Handler registry (v1: log-only)
+# Handler registry (v2: real upserts via CanvasMockExtractor)
 # ---------------------------------------------------------------------------
 
 
-def _handle_assignment_created(
-    tenant_id: uuid.UUID, raw_body: bytes, session: Session
+_extractor_client: CanvasMockClient | None = None
+
+
+def _get_extractor_client() -> CanvasMockClient:
+    """Lazy-build a :class:`CanvasMockClient` for the upsert path.
+
+    The handlers never call :meth:`get` on the client (they only
+    upsert), so the URLs are effectively unreachable; we still build
+    a real client so :class:`CanvasMockExtractor`'s type contract is
+    satisfied under strict mypy.
+    """
+    global _extractor_client
+    if _extractor_client is None:
+        settings = get_settings()
+        _extractor_client = CanvasMockClient(
+            base_url=settings.canvas_mock_api_base_url,
+            api_key=settings.canvas_mock_api_key,
+            jwt_token=settings.canvas_mock_jwt_secret,
+        )
+    return _extractor_client
+
+
+async def _handle_assignment_event(
+    tenant_id: uuid.UUID, raw_body: bytes, _session: Session
 ) -> None:
-    """v1 placeholder: log-only. The v2 handler upserts the assignment."""
-    logger.info(
-        "canvas_mock_webhook_v1",
-        event_name="assignment.created",
-        tenant_id=str(tenant_id),
+    """Upsert a single assignment into ``canvas_mock_assignments``.
+
+    The payload shape matches :class:`CanvasMockAssignmentDTO`
+    (``id`` / ``course_id`` / ``name`` / ...). The extractor maps
+    ``id`` → ``canvas_mock_id`` and ``course_id`` →
+    ``course_canvas_mock_id`` when writing to the row.
+    """
+    from app.schemas.canvas_mock import CanvasMockAssignmentDTO
+
+    payload = json.loads(raw_body) if raw_body else {}
+    dto = CanvasMockAssignmentDTO.model_validate(payload)
+
+    extractor = CanvasMockExtractor(
+        client=_get_extractor_client(),
+        session_factory=_session_factory,
     )
+    await extractor.upsert_assignments(tenant_id=tenant_id, assignments=[dto])
 
 
-def _handle_assignment_updated(
-    tenant_id: uuid.UUID, raw_body: bytes, session: Session
+async def _handle_grade_posted(
+    tenant_id: uuid.UUID, raw_body: bytes, _session: Session
 ) -> None:
-    logger.info(
-        "canvas_mock_webhook_v1",
-        event_name="assignment.updated",
-        tenant_id=str(tenant_id),
-    )
+    """Upsert a single grade into ``canvas_mock_grades``.
 
+    The payload shape matches :class:`CanvasMockGradeDTO``
+    (``assignment_id`` / ``user_id`` / ``score`` / ``grade`` ...).
+    The natural key is ``(tenant_id, assignment_canvas_mock_id)`` —
+    one webhook event corresponds to one (assignment, user) pair
+    delivered by the mock; idempotency at the event level prevents
+    duplicate writes.
+    """
+    from app.schemas.canvas_mock import CanvasMockGradeDTO
 
-def _handle_grade_posted(
-    tenant_id: uuid.UUID, raw_body: bytes, session: Session
-) -> None:
-    logger.info(
-        "canvas_mock_webhook_v1",
-        event_name="grade.posted",
-        tenant_id=str(tenant_id),
+    payload = json.loads(raw_body) if raw_body else {}
+    dto = CanvasMockGradeDTO.model_validate(payload)
+
+    extractor = CanvasMockExtractor(
+        client=_get_extractor_client(),
+        session_factory=_session_factory,
     )
+    await extractor.upsert_grades(tenant_id=tenant_id, grades=[dto])
 
 
 _HANDLERS: dict[str, Any] = {
-    "assignment.created": _handle_assignment_created,
-    "assignment.updated": _handle_assignment_updated,
+    "assignment.created": _handle_assignment_event,
+    "assignment.updated": _handle_assignment_event,
     "grade.posted": _handle_grade_posted,
 }
 
@@ -282,7 +324,7 @@ async def receive_canvas_mock_webhook(request: Request) -> dict[str, Any]:
             return {"status": "queued", "attempt": attempt}
 
         try:
-            handler(tenant_id_header, raw_body, session)
+            await handler(tenant_id_header, raw_body, session)
         except Exception as exc:
             logger.exception(
                 "canvas_mock_webhook_handler_failed",
