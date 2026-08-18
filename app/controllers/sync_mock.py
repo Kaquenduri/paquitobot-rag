@@ -17,8 +17,10 @@ Pull-and-upsert bridge from the ``canvas-mock-api`` into the local
    JWT subject is the tenant UUID so the mock can resolve the role
    independently of the key prefix.
 4. **Run the extractor.** :class:`CanvasMockExtractor.fetch_and_upsert`
-   drives the GETs against ``/courses``, ``/assignments``,
-   ``/attendance`` and upserts each resource into its table.
+   drives the GETs against ``/users/self/courses?include[]=term``,
+   ``/users/self/attendance?days=14`` and ``/users/self/grades`` and
+   upserts each resource into its table. Per-course assignments are
+   **not** fetched — the mock exposes them only under admin routes.
 5. **Commit and return counts.** The body is
    ``{"synced": {"courses": N, ...}, "tenant_id": "<uuid>"}``.
 
@@ -65,7 +67,7 @@ logger = get_logger("app.controllers.sync_mock")
 
 router = APIRouter(prefix="/sync-mock", tags=["sync-mock"])
 
-SYNC_RESOURCES: tuple[str, ...] = ("courses", "assignments", "attendance")
+SYNC_RESOURCES: tuple[str, ...] = ("courses", "attendance", "grades")
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +163,7 @@ async def post_sync_mock(
         Any, Depends(get_canvas_mock_client_factory)
     ],
 ) -> JSONResponse:
-    """Pull courses / assignments / attendance from the mock and upsert.
+    """Pull courses / attendance / grades from the mock and upsert.
 
     Returns 200 with per-resource counts. The full key never leaves
     the request scope; only its 8-character prefix is matched in the
@@ -263,8 +265,8 @@ async def post_sync_mock(
         content={
             "synced": {
                 "courses": counts.get("courses", 0),
-                "assignments": counts.get("assignments", 0),
                 "attendance": counts.get("attendance", 0),
+                "grades": counts.get("grades", 0),
             },
             "tenant_id": str(tenant_id),
         },

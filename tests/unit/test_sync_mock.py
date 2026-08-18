@@ -38,9 +38,9 @@ from app.core.db import engine_for_url, session_factory_for
 from app.middleware.correlation_id import CorrelationIdMiddleware
 from app.models import (
     Base,
-    CanvasMockAssignment,
     CanvasMockAttendanceRecord,
     CanvasMockCourse,
+    CanvasMockGrade,
     CanvasMockUser,
 )
 from app.services.tenant_service import SESSION_STORE_STATE_FLAG
@@ -135,9 +135,11 @@ def _make_app_with_handler(
 class _StubClient:
     """Lightweight stand-in for :class:`CanvasMockClient`.
 
-    The test only needs ``get(path)`` to fire the ``MockTransport``
-    handler. The transport inspects the URL path so the production
-    URL contract (``/courses``, ``/assignments``, ``/attendance``)
+    The test only needs ``get(path, params=...)`` to fire the
+    ``MockTransport`` handler. The transport inspects the URL path
+    so the production URL contract
+    (``/users/self/courses?include[]=term``,
+    ``/users/self/attendance?days=14``, ``/users/self/grades``)
     can be exercised end-to-end.
 
     Mirrors the real client's contract: 5xx raises
@@ -159,11 +161,18 @@ class _StubClient:
             transport=transport,
         )
 
-    async def get(self, path: str) -> Any:
+    async def get(
+        self,
+        path: str,
+        *args: Any,
+        params: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
         from app.services.canvas_mock_client import CanvasMockTransientError
 
         response = await self._client.get(
             path,
+            params=params,
             headers={
                 "X-Api-Key": self.api_key,
                 "Authorization": f"Bearer {self.jwt_token}",
@@ -217,7 +226,7 @@ def test_sync_mock_happy_path_returns_counts(
     app, factory, _engine = sync_mock_app
 
     def _handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/v1/courses":
+        if request.url.path == "/api/v1/users/self/courses":
             return httpx.Response(
                 200,
                 json=[
@@ -229,25 +238,7 @@ def test_sync_mock_happy_path_returns_counts(
                     }
                 ],
             )
-        if request.url.path == "/api/v1/assignments":
-            return httpx.Response(
-                200,
-                json=[
-                    {
-                        "id": 501,
-                        "course_id": 101,
-                        "name": "TP1",
-                        "due_at": "2026-09-01T00:00:00Z",
-                    },
-                    {
-                        "id": 502,
-                        "course_id": 101,
-                        "name": "TP2",
-                        "due_at": "2026-09-15T00:00:00Z",
-                    },
-                ],
-            )
-        if request.url.path == "/api/v1/attendance":
+        if request.url.path == "/api/v1/users/self/attendance":
             return httpx.Response(
                 200,
                 json=[
@@ -256,6 +247,26 @@ def test_sync_mock_happy_path_returns_counts(
                         "user_id": 42,
                         "status": "present",
                     }
+                ],
+            )
+        if request.url.path == "/api/v1/users/self/grades":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "assignment_id": 501,
+                        "user_id": 42,
+                        "score": 18.0,
+                        "grade": "18",
+                        "graded_at": "2026-08-15T10:00:00Z",
+                    },
+                    {
+                        "assignment_id": 502,
+                        "user_id": 42,
+                        "score": 16.0,
+                        "grade": "16",
+                        "graded_at": "2026-08-16T10:00:00Z",
+                    },
                 ],
             )
         return httpx.Response(200, json=[])
@@ -273,16 +284,16 @@ def test_sync_mock_happy_path_returns_counts(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["synced"]["courses"] == 1
-    assert body["synced"]["assignments"] == 2
     assert body["synced"]["attendance"] == 1
+    assert body["synced"]["grades"] == 2
     assert "tenant_id" in body
 
     with factory() as session:
         courses = session.execute(select(CanvasMockCourse)).scalars().all()
-        assignments = session.execute(select(CanvasMockAssignment)).scalars().all()
+        grades = session.execute(select(CanvasMockGrade)).scalars().all()
         attendance = session.execute(select(CanvasMockAttendanceRecord)).scalars().all()
     assert len(courses) == 1
-    assert len(assignments) == 2
+    assert len(grades) == 2
     assert len(attendance) == 1
 
 
