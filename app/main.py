@@ -162,12 +162,14 @@ def create_app() -> FastAPI:
 
     # Mount every controller (PR 6 task 6.7).
     from app.controllers.auth import router as auth_router
+    from app.controllers.auth_canvas_mock import router as auth_canvas_mock_router
     from app.controllers.canvas_mock_webhooks import router as canvas_mock_webhooks_router
     from app.controllers.health import router as health_router
     from app.controllers.query import router as query_router
     from app.controllers.sync import router as sync_router
 
     app.include_router(auth_router)
+    app.include_router(auth_canvas_mock_router)
     app.include_router(query_router)
     app.include_router(sync_router)
     app.include_router(health_router)
