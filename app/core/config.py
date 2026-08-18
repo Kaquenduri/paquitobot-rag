@@ -102,6 +102,16 @@ class Settings(BaseSettings):
         ),
     )
 
+    # --- Canvas Mock (PR 1; PR 4 adds the outbound API keys) -------------
+    canvas_mock_webhook_secret: str = Field(
+        ...,
+        description=(
+            "HMAC secret used to verify the X-Canvas-Mock-Signature header on "
+            "inbound webhooks. Distinct from BACKEND_SECRET so a leak of the "
+            "scheduler's HMAC cannot impersonate a webhook delivery."
+        ),
+    )
+
     # --- Embedding model ---
     ollama_embedding_model: str = Field(
         default="qwen3-embedding:8b",

@@ -46,6 +46,7 @@ def _basic_settings(**overrides: Any) -> Settings:
         "ollama_host": "http://127.0.0.1:1",
         "canvas_api_base_url": "https://canvas.test/api/v1",
         "google_client_id": "test-only.apps.googleusercontent.com",
+        "canvas_mock_webhook_secret": "test-only-canvas-mock-webhook-secret",
         "scheduler_enabled": True,
     }
     base.update(overrides)

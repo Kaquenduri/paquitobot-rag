@@ -42,6 +42,7 @@ def app_settings(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
         "OLLAMA_HOST": "http://127.0.0.1:1",
         "SCHEDULER_ENABLED": "false",
         "DISABLE_RAG_ROUTES": "true",
+        "CANVAS_MOCK_WEBHOOK_SECRET": "test-only-canvas-mock-webhook-secret",
     }
     for key, value in overrides.items():
         monkeypatch.setenv(key, value)
