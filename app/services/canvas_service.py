@@ -297,6 +297,10 @@ def _selftest() -> None:
         ollama_host="http://127.0.0.1:1",
         canvas_api_base_url="https://canvas.invalid/api/v1",
         google_client_id="selftest.apps.googleusercontent.com",
+        canvas_mock_webhook_secret="selftest-canvas-mock-webhook-secret-32chars-min",
+        canvas_mock_api_base_url="https://canvas-mock.invalid/api/v1",
+        canvas_mock_api_key="selftest-canvas-mock-api-key",
+        canvas_mock_jwt_secret="selftest-canvas-mock-jwt-secret-32chars-min",
         scheduler_enabled=False,
     )
     engine = engine_for_url("sqlite:///:memory:")
