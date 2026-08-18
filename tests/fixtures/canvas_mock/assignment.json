@@ -1,0 +1,15 @@
+{
+  "id": 42,
+  "course_id": 101,
+  "name": "Parcial 1",
+  "description": "Examen parcial de la unidad 1",
+  "due_at": "2026-05-01T23:59:00Z",
+  "points_possible": 20.0,
+  "grading_type": "points",
+  "submission_types": ["online_text_entry", "online_upload"],
+  "workflow_state": "published",
+  "html_url": "https://canvas-mock.example.com/courses/101/assignments/42",
+  "url": "https://canvas-mock.example.com/api/v1/courses/101/assignments/42",
+  "created_at": "2026-04-01T10:00:00Z",
+  "updated_at": "2026-04-15T12:00:00Z"
+}
