@@ -7,6 +7,20 @@ The extractor:
    ``tenant_id``.
 4. Rolls back the whole transaction on any shape failure (atomic
    rejection: malformed 200 → 0 rows persist).
+
+The mock exposes ONLY these ``/users/self/*`` endpoints (verified
+against canvas-mock-api/app/api/routers/users_self.py):
+
+- ``GET /users/self/courses?include[]=term`` — required to get the term
+  sub-object; ``/users/self/favorites/courses`` does NOT accept it.
+- ``GET /users/self/attendance?days=N`` — global (no per-course scope).
+- ``GET /users/self/grades`` — global (no per-course scope).
+- ``GET /users/self/profile``.
+
+Per-course endpoints (``/users/self/courses/{id}/assignments``) DO NOT
+EXIST — they are admin-only under ``/admin/*``. The extractor must
+therefore call the three global endpoints above; assignments are no
+longer fetched per-course (the mock has no self-service equivalent).
 """
 
 from __future__ import annotations
@@ -19,7 +33,6 @@ import httpx
 import pytest
 
 from app.models import (
-    CanvasMockAssignment,
     CanvasMockAttendanceRecord,
     CanvasMockCourse,
     CanvasMockGrade,
@@ -38,7 +51,7 @@ def _client(handlers: dict[str, Any]) -> CanvasMockClient:
         def __init__(self, h: dict[str, Any]) -> None:
             self._h = h
 
-        async def get(self, path: str) -> Any:
+        async def get(self, path: str, *args: Any, **kwargs: Any) -> Any:
             return self._h[path]
 
     client = CanvasMockClient(
@@ -51,8 +64,123 @@ def _client(handlers: dict[str, Any]) -> CanvasMockClient:
     return client
 
 
+def _recording_client(
+    response_bodies: dict[str, Any],
+) -> tuple[CanvasMockClient, list[httpx.Request]]:
+    """Build a client backed by httpx.MockTransport that records requests.
+
+    The handler routes by URL path (without query) so callers can
+    assert that ``/users/self/courses`` was called with
+    ``?include[]=term`` and ``/users/self/attendance`` with
+    ``?days=14``.
+    """
+    captured: list[httpx.Request] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        body = response_bodies.get(request.url.path, [])
+        return httpx.Response(200, json=body)
+
+    client = CanvasMockClient(
+        base_url="https://canvas-mock.example.com",
+        api_key="adm_test",
+        jwt_token="jwt",
+        transport=httpx.MockTransport(_handler),
+    )
+    return client, captured
+
+
 def _run(coro: Any) -> Any:
     return asyncio.run(coro)
+
+
+# ---------------------------------------------------------------------------
+# Path/params contract — verified against canvas-mock-api router
+# ---------------------------------------------------------------------------
+
+
+def test_extractor_fetch_courses_calls_self_courses_with_term_include() -> None:
+    """``fetch_courses`` MUST hit ``/users/self/courses?include[]=term``.
+
+    The mock's ``/users/self/favorites/courses`` does NOT accept the
+    ``include[]=term`` query param; the only endpoint that does is
+    ``/users/self/courses``.
+    """
+    client, captured = _recording_client(
+        {
+            "/users/self/courses": [
+                {
+                    "id": 101,
+                    "name": "Cálculo I",
+                    "course_code": "CALC-1",
+                    "workflow_state": "available",
+                    "term": {"id": 1, "name": "Fall 2026"},
+                }
+            ],
+        }
+    )
+    extractor = CanvasMockExtractor(client=client)
+    rows = _run(extractor.fetch_courses())
+    assert len(captured) == 1
+    request = captured[0]
+    assert request.url.path == "/users/self/courses"
+    assert request.url.params["include[]"] == "term"
+    assert len(rows) == 1
+    assert rows[0].id == 101
+
+
+def test_extractor_fetch_attendance_calls_self_attendance_with_days() -> None:
+    """``fetch_attendance`` MUST hit ``/users/self/attendance?days=14``.
+
+    The mock requires ``days`` in the [1, 365] range; 14 is the
+    default per the mock router.
+    """
+    client, captured = _recording_client(
+        {
+            "/users/self/attendance": [
+                {
+                    "class_session_id": 9001,
+                    "user_id": 77,
+                    "status": "present",
+                    "marked_at": "2026-08-18T10:00:00+00:00",
+                }
+            ],
+        }
+    )
+    extractor = CanvasMockExtractor(client=client)
+    rows = _run(extractor.fetch_attendance())
+    assert len(captured) == 1
+    request = captured[0]
+    assert request.url.path == "/users/self/attendance"
+    assert request.url.params["days"] == "14"
+    assert len(rows) == 1
+    assert rows[0].status == "present"
+
+
+def test_extractor_fetch_grades_calls_self_grades_no_params() -> None:
+    """``fetch_grades`` MUST hit ``/users/self/grades`` with no params."""
+    client, captured = _recording_client(
+        {
+            "/users/self/grades": [
+                {
+                    "assignment_id": 42,
+                    "user_id": 77,
+                    "score": 18.0,
+                    "grade": "18",
+                    "graded_at": "2026-08-15T10:00:00+00:00",
+                    "grader_id": 5,
+                }
+            ],
+        }
+    )
+    extractor = CanvasMockExtractor(client=client)
+    rows = _run(extractor.fetch_grades())
+    assert len(captured) == 1
+    request = captured[0]
+    assert request.url.path == "/users/self/grades"
+    assert len(request.url.params) == 0
+    assert len(rows) == 1
+    assert rows[0].score == 18.0
 
 
 # ---------------------------------------------------------------------------
@@ -60,27 +188,17 @@ def _run(coro: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def test_extractor_fetch_courses_validates_and_returns(db_session: Any) -> None:
-    """``fetch_courses`` returns the validated DTOs."""
-    client = _client(
-        {
-            "/courses": [
-                {"id": 101, "name": "Cálculo I", "course_code": "CALC-1", "workflow_state": "available"},
-            ],
-        }
-    )
-    extractor = CanvasMockExtractor(client=client)
-    rows = _run(extractor.fetch_courses())
-    assert len(rows) == 1
-    assert rows[0].id == 101
-
-
 def test_extractor_upsert_courses_writes_to_db(db_session: Any) -> None:
     """``upsert_courses`` inserts a course row scoped by tenant."""
     client = _client(
         {
-            "/courses": [
-                {"id": 101, "name": "Cálculo I", "course_code": "CALC-1", "workflow_state": "available"},
+            "/users/self/courses": [
+                {
+                    "id": 101,
+                    "name": "Cálculo I",
+                    "course_code": "CALC-1",
+                    "workflow_state": "available",
+                },
             ],
         }
     )
@@ -92,6 +210,7 @@ def test_extractor_upsert_courses_writes_to_db(db_session: Any) -> None:
     fetched = db_session.query(CanvasMockCourse).filter_by(tenant_id=tenant).all()
     assert len(fetched) == 1
     assert fetched[0].name == "Cálculo I"
+    assert fetched[0].canvas_mock_id == 101
 
 
 # ---------------------------------------------------------------------------
@@ -103,9 +222,9 @@ def test_extractor_rejects_malformed_with_zero_rows(db_session: Any) -> None:
     """A malformed payload in a 5-row batch lands 0 rows in the DB."""
     client = _client(
         {
-            "/courses": [
+            "/users/self/courses": [
                 {"id": 101, "name": "Cálculo I", "course_code": "CALC-1", "workflow_state": "available"},
-                {"id": 102, "name": "Álgebra", "course_code": "ALG-1"},  # missing workflow_state
+                {"id": 102, "name": "Álgebra", "course_code": "ALG-1"},
                 {"id": 103, "name": "Física", "course_code": "FIS-1", "workflow_state": "available"},
                 {"id": 104, "name": "Química", "course_code": "QUI-1", "workflow_state": "available"},
                 {"id": 105, "name": "Biología", "course_code": "BIO-1", "workflow_state": "available"},
@@ -157,7 +276,7 @@ async def _stub_404(*args: Any, **kwargs: Any) -> Any:
 def test_extractor_upsert_grades(db_session: Any) -> None:
     client = _client(
         {
-            "/grades": [
+            "/users/self/grades": [
                 {
                     "assignment_id": 42,
                     "user_id": 77,
@@ -182,7 +301,7 @@ def test_extractor_upsert_grades(db_session: Any) -> None:
 def test_extractor_upsert_attendance(db_session: Any) -> None:
     client = _client(
         {
-            "/attendance": [
+            "/users/self/attendance": [
                 {"class_session_id": 9001, "user_id": 77, "status": "present"},
             ],
         }
@@ -197,28 +316,3 @@ def test_extractor_upsert_attendance(db_session: Any) -> None:
     )
     assert len(fetched) == 1
     assert fetched[0].status == "present"
-
-
-def test_extractor_upsert_assignments(db_session: Any) -> None:
-    client = _client(
-        {
-            "/assignments": [
-                {
-                    "id": 42,
-                    "course_id": 101,
-                    "name": "Parcial",
-                    "points_possible": 20.0,
-                    "due_at": None,
-                    "workflow_state": "published",
-                },
-            ],
-        }
-    )
-    tenant = uuid.uuid4()
-    extractor = CanvasMockExtractor(client=client, session_factory=lambda: db_session)
-    rows = _run(extractor.fetch_assignments())
-    _run(extractor.upsert_assignments(tenant_id=tenant, assignments=rows))
-    db_session.commit()
-    fetched = db_session.query(CanvasMockAssignment).filter_by(tenant_id=tenant).all()
-    assert len(fetched) == 1
-    assert fetched[0].name == "Parcial"
