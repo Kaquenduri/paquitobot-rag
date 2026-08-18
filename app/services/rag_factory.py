@@ -194,6 +194,8 @@ class _TenantToolRuntime:
     _ID_TEMPLATES: ClassVar[dict[str, str]] = {
         "course_id": "courses_list",
         "assignment_id": "assignments_list",
+        "course_id_mock": "mock_courses_list",
+        "assignment_id_mock": "mock_assignments_list",
     }
 
     def __init__(self, session: Any, tenant_id: Any) -> None:
@@ -201,6 +203,8 @@ class _TenantToolRuntime:
         self._tenant_id = tenant_id
         self._user_id: str | None = None
         self._user_id_loaded = False
+        self._user_id_mock: int | None = None
+        self._user_id_mock_loaded = False
         self._id_cache: dict[str, set[str]] = {}
 
     def _run_template(self, name: str, extra_slots: dict[str, Any]) -> list[dict[str, Any]]:
@@ -228,6 +232,20 @@ class _TenantToolRuntime:
         self._user_id_loaded = True
         return self._user_id
 
+    def self_mock_user_id(self) -> int | None:
+        """Resolve the tenant's own ``canvas_mock_users.canvas_mock_id``.
+
+        Mirrors :meth:`self_user_id` for the mock catalog — the table
+        only ever holds the authenticated student's self-profile, so
+        ``tenant_id`` determines this uniquely.
+        """
+        if self._user_id_mock_loaded:
+            return self._user_id_mock
+        rows = self._run_template("self_mock_user_id", {})
+        self._user_id_mock = int(rows[0]["canvas_mock_id"]) if rows else None
+        self._user_id_mock_loaded = True
+        return self._user_id_mock
+
     def execute(self, tool: SQLTool, args: dict[str, Any]) -> list[dict[str, Any]]:
         slots = dict(args)
         # ``get_user_courses_current_term`` derives its only non-tenant
@@ -251,12 +269,24 @@ class _TenantToolRuntime:
             if user_id is None:
                 raise SelfUserUnresolved("tenant has no synced user row")
             slots["user_id"] = user_id
+        if "user_id_mock" in tool.server_slots:
+            mock_user_id = self.self_mock_user_id()
+            if mock_user_id is None:
+                raise SelfUserUnresolved("tenant has no mocked user row")
+            slots["user_id_mock"] = mock_user_id
         return self._run_template(tool.name, slots)
 
     def known_ids(self, slot: str) -> set[str]:
         if slot not in self._id_cache:
             rows = self._run_template(self._ID_TEMPLATES[slot], {})
-            self._id_cache[slot] = {str(row["id"]) for row in rows}
+            # Mock grounding templates project their natural key as
+            # ``canvas_mock_id``; legacy templates use ``id``. Pick the
+            # column by what the template returned rather than
+            # hard-coding.
+            if rows and "canvas_mock_id" in rows[0]:
+                self._id_cache[slot] = {str(row["canvas_mock_id"]) for row in rows}
+            else:
+                self._id_cache[slot] = {str(row["id"]) for row in rows}
         return self._id_cache[slot]
 
     def as_runtime(self) -> SQLToolRuntime:
@@ -390,6 +420,7 @@ def _selftest() -> None:
         ollama_host="http://127.0.0.1:1",
         canvas_api_base_url="https://canvas.invalid/api/v1",
         google_client_id="selftest.apps.googleusercontent.com",
+        canvas_mock_webhook_secret="selftest-canvas-mock-webhook-secret",
     )
     service = build_rag_service(settings, db_session_factory=get_db_session)
     assert service is not None
@@ -411,10 +442,10 @@ def _selftest() -> None:
 
     def _fake_execute(session, sql, *, tenant_id, params=None, row_limit=200):
         calls.append((sql, dict(params or {})))
-        if "FROM users" in sql and "ORDER BY created_at" in sql:
-            return [{"id": "user-77"}]
-        if "FROM courses" in sql and "course_code" in sql:
-            return [{"id": "course-1"}, {"id": "course-2"}]
+        if "FROM canvas_mock_users" in sql and "ORDER BY created_at" in sql:
+            return [{"canvas_mock_id": 77}]
+        if "FROM canvas_mock_courses" in sql and "ORDER BY canvas_mock_id" in sql:
+            return [{"canvas_mock_id": 101}, {"canvas_mock_id": 102}]
         return [{"ok": True}]
 
     # Patch this module's own globals rather than
@@ -426,23 +457,23 @@ def _selftest() -> None:
     module_globals["execute_readonly"] = _fake_execute
     try:
         runtime = _TenantToolRuntime(_FakeSession(), "tenant-9")
-        # user_id is derived from tenant_id, cached, and passed as a bind param.
-        runtime.execute(TOOL_CATALOG["get_user_missing_submissions"], {})
-        assert calls[-1][1] == {"user_id": "user-77"}
-        runtime.execute(TOOL_CATALOG["get_user_late_submissions"], {})
-        assert calls[-1][1] == {"user_id": "user-77"}
-        # Two tool calls, but self_user_id was only read once.
+        # user_id_mock is derived from tenant_id, cached, and passed as a bind param.
+        runtime.execute(TOOL_CATALOG["get_user_mock_grades"], {})
+        assert calls[-1][1] == {"user_id_mock": 77}
+        runtime.execute(TOOL_CATALOG["get_user_missing_mock_assignments"], {})
+        assert calls[-1][1] == {"user_id_mock": 77}
+        # Two tool calls, but self_mock_user_id was only read once.
         assert sum(1 for sql, _ in calls if "ORDER BY created_at" in sql) == 1
 
-        # Grounding sets come from the allow-listed list templates, cached.
-        assert runtime.known_ids("course_id") == {"course-1", "course-2"}
+        # Grounding sets come from the mock list templates, cached.
+        assert runtime.known_ids("course_id_mock") == {"101", "102"}
         before = len(calls)
-        assert runtime.known_ids("course_id") == {"course-1", "course-2"}
+        assert runtime.known_ids("course_id_mock") == {"101", "102"}
         assert len(calls) == before, "grounding set must be cached per request"
 
-        # A model-supplied course_id rides along as a bind parameter.
-        runtime.execute(TOOL_CATALOG["get_course_details"], {"course_id": "course-1"})
-        assert calls[-1][1] == {"course_id": "course-1"}
+        # A model-supplied course_id_mock rides along as a bind parameter.
+        runtime.execute(TOOL_CATALOG["get_mock_course_details"], {"course_id": 101})
+        assert calls[-1][1] == {"course_id": 101}
     finally:
         module_globals["execute_readonly"] = original
 
