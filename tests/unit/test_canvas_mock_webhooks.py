@@ -20,10 +20,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.controllers.canvas_mock_webhooks import router as webhook_router
-from app.core.config import Settings
-from app.models import CanvasMockWebhookEvent, CanvasMockWebhookSubscription
+from app.models import Base, CanvasMockWebhookEvent, CanvasMockWebhookSubscription
 from app.security.webhook_hmac import compute_signature
-from app.models import Base
 
 
 @pytest.fixture
@@ -51,7 +49,13 @@ def app_settings(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
 @pytest.fixture
 def sqlite_engine():
     """Yield a fresh SQLite engine with the full schema."""
-    engine = create_engine("sqlite:///:memory:")
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     Base.metadata.create_all(engine)
     yield engine
     engine.dispose()
@@ -104,10 +108,16 @@ def _signed_headers(
     }
 
 
+def _now() -> int:
+    import time
+
+    return int(time.time())
+
+
 def _resolve_tenant_id(app: FastAPI) -> uuid.UUID:
     """Grab the seeded tenant id from the in-memory engine."""
-    from app.core.db import engine_for_url  # noqa: F401 - sanity
     import app.controllers.canvas_mock_webhooks as controller_module
+    from app.core.db import engine_for_url  # noqa: F401 - sanity
 
     with controller_module._session_factory() as session:
         return session.query(CanvasMockWebhookSubscription).one().tenant_id
@@ -117,7 +127,7 @@ def test_valid_signature_returns_200(client: TestClient, app: FastAPI) -> None:
     """A correctly-signed POST is accepted and persisted."""
     tenant_id = _resolve_tenant_id(app)
     body = b'{"grade_id": 7, "score": 18.0}'
-    ts = 1_700_000_000
+    ts = _now()
     headers = _signed_headers(
         "test-webhook-secret", body, ts, "grade.posted", 42
     )
@@ -132,7 +142,7 @@ def test_invalid_signature_returns_401(client: TestClient, app: FastAPI) -> None
     """A bad signature returns 401 and a ``signature_failed`` row."""
     tenant_id = _resolve_tenant_id(app)
     body = b'{"grade_id": 7, "score": 18.0}'
-    ts = 1_700_000_000
+    ts = _now()
     headers = _signed_headers(
         "WRONG_SECRET", body, ts, "grade.posted", 42
     )
@@ -156,7 +166,7 @@ def test_duplicate_post_returns_duplicate(client: TestClient, app: FastAPI) -> N
     """A second POST with the same composite key returns duplicate."""
     tenant_id = _resolve_tenant_id(app)
     body = b'{"grade_id": 7, "score": 18.0}'
-    ts = 1_700_000_000
+    ts = _now()
     headers = _signed_headers(
         "test-webhook-secret", body, ts, "grade.posted", 42
     )
@@ -169,11 +179,15 @@ def test_duplicate_post_returns_duplicate(client: TestClient, app: FastAPI) -> N
 
 
 def test_missing_secret_returns_503(app_settings: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    """When ``canvas_mock_webhook_secret`` is unset, the app returns 503."""
-    monkeypatch.delenv("CANVAS_MOCK_WEBHOOK_SECRET", raising=False)
+    """When ``canvas_mock_webhook_secret`` is unset, the app returns 503.
+
+    The Settings class is built BEFORE the env var is cleared, so
+    we need to patch the cached settings object itself.
+    """
     from app.core.config import get_settings
 
-    get_settings.cache_clear()
+    settings = get_settings()
+    monkeypatch.setattr(settings, "canvas_mock_webhook_secret", "")
     app = FastAPI()
     app.include_router(webhook_router)
     c = TestClient(app)
@@ -205,7 +219,7 @@ def test_handler_error_writes_signature_failed_row(client: TestClient, app: Fast
     """
     tenant_id = _resolve_tenant_id(app)
     body = b'{"grade_id": 7}'
-    ts = 1_700_000_000
+    ts = _now()
     headers = _signed_headers(
         "test-webhook-secret", body, ts, "grade.posted", 42
     )
@@ -230,7 +244,7 @@ def test_cross_tenant_attempt_uses_explicit_header(
     """The tenant comes from the explicit header, not the URL or body."""
     tenant_id = _resolve_tenant_id(app)
     body = b'{"grade_id": 7}'
-    ts = 1_700_000_000
+    ts = _now()
     headers = _signed_headers(
         "test-webhook-secret", body, ts, "grade.posted", 42
     )

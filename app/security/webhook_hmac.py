@@ -76,7 +76,7 @@ def compute_signature(secret: str, attempt_ts: int, raw_body: bytes) -> str:
     SHA-256, hex-encoded lower-case. Exposed for tests and the
     controller's replay path.
     """
-    payload = f"{attempt_ts}.".encode("utf-8") + raw_body
+    payload = f"{attempt_ts}.".encode() + raw_body
     return hmac.new(
         secret.encode("utf-8"), payload, hashlib.sha256
     ).hexdigest()

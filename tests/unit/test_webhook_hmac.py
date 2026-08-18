@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
 import time
 from pathlib import Path
 
@@ -42,7 +41,7 @@ def test_compute_signature_matches_golden() -> None:
     body = b'{"id":1,"event":"grade.posted"}'
     expected = hmac.new(
         secret.encode("utf-8"),
-        f"{ts}.".encode("utf-8") + body,
+        f"{ts}.".encode() + body,
         hashlib.sha256,
     ).hexdigest()
     assert compute_signature(secret, ts, body) == expected
