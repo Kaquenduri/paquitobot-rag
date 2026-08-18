@@ -245,13 +245,15 @@ def test_canvas_mock_attendance_records_check_constraint(db_session: Any) -> Non
         db_session.flush()
     db_session.rollback()
 
-    # The two valid statuses must insert without error.
-    for status in ("present", "absent"):
+    # The two valid statuses must insert without error — using distinct
+    # (session, user) pairs so the composite uniqueness does not block the
+    # second insert.
+    for i, status in enumerate(("present", "absent")):
         db_session.add(
             CanvasMockAttendanceRecord(
                 tenant_id=tenant,
-                class_session_canvas_mock_id=9001,
-                user_canvas_mock_id=77,
+                class_session_canvas_mock_id=9001 + i,
+                user_canvas_mock_id=77 + i,
                 status=status,
             )
         )
