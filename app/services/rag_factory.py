@@ -18,6 +18,7 @@ is initialised on the first request that needs it and cached afterwards.
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
@@ -265,7 +266,6 @@ class _TenantToolRuntime:
         """
         if self._mock_extractor_factory is None:
             return {}
-        import asyncio
 
         extractor = self._mock_extractor_factory()
         return await extractor.fetch_and_upsert(

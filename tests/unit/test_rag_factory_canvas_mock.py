@@ -15,10 +15,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.models import (
-    CanvasMockAssignment,
     CanvasMockCourse,
-    CanvasMockEnrollment,
-    CanvasMockGrade,
     CanvasMockUser,
 )
 from app.services.rag_factory import _TenantToolRuntime
@@ -74,8 +71,10 @@ def test_mock_tool_returns_only_tenant_rows(db_session: Any) -> None:
 
 def test_mock_user_id_unresolved_raises_self_user_unresolved(db_session: Any) -> None:
     """A tenant with no mock user row raises ``SelfUserUnresolved``."""
+    from app.services.rag_factory import SelfUserUnresolved
+
     orphan = _tenant_with_no_user(db_session)
-    with pytest.raises(Exception):
+    with pytest.raises(SelfUserUnresolved):
         orphan.execute(TOOL_CATALOG["get_user_mock_grades"], {})
 
 

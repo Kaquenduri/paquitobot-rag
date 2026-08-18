@@ -23,7 +23,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.models import (
@@ -34,7 +34,7 @@ from app.models import (
 
 
 @pytest.fixture
-def sqlite_engine() -> Generator[Any, None, None]:
+def sqlite_engine() -> Generator[Any]:
     """Yield a fresh SQLite engine with the full schema."""
     engine = create_engine(
         "sqlite:///:memory:",
@@ -55,7 +55,7 @@ def session_factory(sqlite_engine: Any) -> Any:
 
 
 @pytest.fixture
-def mock_tenant(session_factory: Any) -> Generator[dict[str, Any], None, None]:
+def mock_tenant(session_factory: Any) -> Generator[dict[str, Any]]:
     """Insert a tenant + canvas_mock_users + subscription row.
 
     Yields a dict with the tenant id, the session factory, and the
