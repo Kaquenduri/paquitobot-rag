@@ -505,7 +505,7 @@ __all__ = [
 # import CanvasMockCourse`` without an extra import path. The import is
 # placed after __all__ so the names are part of the public surface even
 # if the package is imported for ``dir()``-style introspection.
-from app.models.canvas_mock import (  # noqa: E402,F401
+from app.models.canvas_mock import (
     CanvasMockAssignment,
     CanvasMockAttendanceRecord,
     CanvasMockClassSession,

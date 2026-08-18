@@ -28,7 +28,6 @@ from typing import Any
 import pytest
 from sqlalchemy import CheckConstraint, UniqueConstraint
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import MappedColumn
 
 from app.models import Base
 from app.models.canvas_mock import (
