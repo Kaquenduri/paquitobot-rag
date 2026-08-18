@@ -134,7 +134,13 @@ class CanvasMockClient:
         """Rotate the JWT token. The next request uses the new value."""
         self._jwt_token = token
 
-    async def _request_with_retry(self, method: str, path: str) -> Any:
+    async def _request_with_retry(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> Any:
         """Run the request inside the retry envelope and return the parsed JSON."""
         if method not in self.ALLOWED_METHODS:
             raise CanvasMockError(
@@ -155,7 +161,7 @@ class CanvasMockClient:
         for strike in range(RETRY_ATTEMPTS):
             try:
                 response = await self._client.request(
-                    method, path, headers=headers
+                    method, path, headers=headers, params=params
                 )
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 last_exc = CanvasMockTransientError(str(exc))
@@ -183,9 +189,20 @@ class CanvasMockClient:
 
         raise CanvasMockError("retry loop exited without returning")  # pragma: no cover
 
-    async def get(self, path: str, *args: Any, **kwargs: Any) -> Any:
-        """GET ``path`` and return the parsed JSON body."""
-        return await self._request_with_retry("GET", path)
+    async def get(
+        self,
+        path: str,
+        *args: Any,
+        params: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """GET ``path`` and return the parsed JSON body.
+
+        ``params`` is forwarded to httpx so callers can attach the
+        canvas-mock ``include[]`` / ``days`` query parameters that the
+        self endpoints accept.
+        """
+        return await self._request_with_retry("GET", path, params=params)
 
     async def aclose(self) -> None:
         if self._owns_client:

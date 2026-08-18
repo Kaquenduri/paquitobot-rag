@@ -19,6 +19,18 @@ The extractor is the bridge between the mock's HTTP API and the
 
 The extractor is **async** because the HTTP client is async; tests
 use ``asyncio.run`` to bridge from sync test code.
+
+Endpoint contract (verified against canvas-mock-api
+``app/api/routers/users_self.py``):
+
+- ``GET /users/self/courses?include[]=term`` — the only endpoint that
+  embeds the term sub-object. ``/users/self/favorites/courses``
+  accepts no query params; per-course assignments/grades are
+  admin-only under ``/admin/*`` and cannot be reached by a
+  self-service caller.
+- ``GET /users/self/attendance?days=N`` — global; ``days`` defaults
+  to 14 in the mock router.
+- ``GET /users/self/grades`` — global, no params.
 """
 
 from __future__ import annotations
@@ -32,13 +44,11 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.models import (
-    CanvasMockAssignment,
     CanvasMockAttendanceRecord,
     CanvasMockCourse,
     CanvasMockGrade,
 )
 from app.schemas.canvas_mock import (
-    CanvasMockAssignmentDTO,
     CanvasMockAttendanceRecordDTO,
     CanvasMockCourseDTO,
     CanvasMockGradeDTO,
@@ -65,13 +75,23 @@ class CanvasMockShapeError(Exception):
 # Endpoint paths (mock URLs)
 # ---------------------------------------------------------------------------
 
-# These are the GET endpoints the mock exposes. The extractor calls
-# each one with the bare path; the client injects the base URL.
-PATH_COURSES = "/courses"
-PATH_ASSIGNMENTS = "/assignments"
-PATH_GRADES = "/grades"
-PATH_ATTENDANCE = "/attendance"
-PATH_USERS_SELF = "/users/self"
+# The canvas-mock-api exposes these endpoints for the authenticated
+# self-caller under ``/users/self/*``. The extractor forwards each
+# request through :class:`CanvasMockClient.get` with the right query
+# params so the right sub-object payloads come back.
+PATH_COURSES = "/users/self/courses"
+PATH_ATTENDANCE = "/users/self/attendance"
+PATH_GRADES = "/users/self/grades"
+
+# Locked default for the attendance window. The mock router accepts
+# ``days`` in [1, 365] and defaults to 14; we send it explicitly so
+# downstream operators know what the extractor is asking for.
+ATTENDANCE_DAYS_DEFAULT: int = 14
+
+# Query parameter names used by the mock. ``include[]=term`` is the
+# canonical Canvas flag for embedding sub-objects; using a list
+# value lets httpx emit ``include[]=term`` (no key suffix).
+TERM_INCLUDE_PARAM = "include[]"
 
 
 # ---------------------------------------------------------------------------
@@ -101,11 +121,15 @@ class CanvasMockExtractor:
 
     # -- fetch stage -----------------------------------------------------
 
-    async def _fetch_all(self, path: str) -> list[dict[str, Any]]:
-        """GET ``path`` and return the raw JSON list."""
-        rows = await self._client.get(path)
+    async def _fetch_all(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """GET ``path`` (with optional query ``params``) and return raw JSON."""
+        rows = await self._client.get(path, params=params)
         if not isinstance(rows, list):
-            # A 200 with a non-list payload is a malformed response.
             raise CanvasMockShapeError(
                 f"{path} returned non-list payload",
                 index=0,
@@ -114,19 +138,21 @@ class CanvasMockExtractor:
         return rows
 
     async def fetch_courses(self) -> list[CanvasMockCourseDTO]:
-        rows = await self._fetch_all(PATH_COURSES)
+        rows = await self._fetch_all(
+            PATH_COURSES,
+            params={TERM_INCLUDE_PARAM: ["term"]},
+        )
         return self._validate_dtos(rows, CanvasMockCourseDTO, "courses")
-
-    async def fetch_assignments(self) -> list[CanvasMockAssignmentDTO]:
-        rows = await self._fetch_all(PATH_ASSIGNMENTS)
-        return self._validate_dtos(rows, CanvasMockAssignmentDTO, "assignments")
 
     async def fetch_grades(self) -> list[CanvasMockGradeDTO]:
         rows = await self._fetch_all(PATH_GRADES)
         return self._validate_dtos(rows, CanvasMockGradeDTO, "grades")
 
     async def fetch_attendance(self) -> list[CanvasMockAttendanceRecordDTO]:
-        rows = await self._fetch_all(PATH_ATTENDANCE)
+        rows = await self._fetch_all(
+            PATH_ATTENDANCE,
+            params={"days": ATTENDANCE_DAYS_DEFAULT},
+        )
         return self._validate_dtos(
             rows, CanvasMockAttendanceRecordDTO, "attendance"
         )
@@ -227,34 +253,6 @@ class CanvasMockExtractor:
                 "workflow_state": "workflow_state",
                 "start_at": "start_at",
                 "end_at": "end_at",
-                "enrollments_count": "enrollments_count",
-            },
-            natural_key="id",
-        )
-
-    async def upsert_assignments(
-        self, tenant_id: Any, assignments: list[CanvasMockAssignmentDTO]
-    ) -> int:
-        return await self._upsert(
-            tenant_id,
-            CanvasMockAssignment,
-            assignments,
-            attribute_map={
-                # ``CanvasMockAssignmentDTO.id`` IS the natural key; the
-                # DTO carries the mock id (int) under ``id``.
-                "id": "canvas_mock_id",
-                "course_id": "course_canvas_mock_id",
-                "name": "name",
-                "description": "description",
-                "points_possible": "points_possible",
-                "due_at": "due_at",
-                "grading_type": "grading_type",
-                "submission_types": "submission_types",
-                "workflow_state": "workflow_state",
-                "html_url": "html_url",
-                "url": "url",
-                "created_at": "created_at_mock",
-                "updated_at": "updated_at_mock",
             },
             natural_key="id",
         )
@@ -303,17 +301,17 @@ class CanvasMockExtractor:
 
         Raises :class:`CanvasMockShapeError` on any per-row failure;
         the transaction is rolled back so the database stays consistent.
+
+        ``resources`` accepts ``"courses"``, ``"attendance"``, and
+        ``"grades"``. ``"assignments"`` is **not** supported — the
+        mock exposes no self-service assignment endpoint, only
+        admin-only routes under ``/admin/*``.
         """
         counts: dict[str, int] = {}
         for resource in resources:
             if resource == "courses":
                 rows = await self.fetch_courses()
                 counts["courses"] = await self.upsert_courses(tenant_id, rows)
-            elif resource == "assignments":
-                rows = await self.fetch_assignments()
-                counts["assignments"] = await self.upsert_assignments(
-                    tenant_id, rows
-                )
             elif resource == "grades":
                 rows = await self.fetch_grades()
                 counts["grades"] = await self.upsert_grades(tenant_id, rows)
@@ -326,11 +324,11 @@ class CanvasMockExtractor:
 
 
 __all__ = [
-    "PATH_ASSIGNMENTS",
+    "ATTENDANCE_DAYS_DEFAULT",
     "PATH_ATTENDANCE",
     "PATH_COURSES",
     "PATH_GRADES",
-    "PATH_USERS_SELF",
+    "TERM_INCLUDE_PARAM",
     "CanvasMockExtractor",
     "CanvasMockShapeError",
 ]
