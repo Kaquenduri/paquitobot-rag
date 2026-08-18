@@ -112,114 +112,167 @@ def default_allow_list() -> AllowList:
         "SELECT id, name, course_id, due_at FROM assignments WHERE tenant_id = {{tenant_id}} AND deleted_at IS NULL ORDER BY due_at",
         slots={"tenant_id"},
     )
-    _register_agent_tools(registry)
-    return registry
-
-
-def _register_agent_tools(registry: AllowList) -> None:
-    """Register the templates exposed to the LLM as tools.
-
-    These back the :mod:`app.text_to_sql.tools` catalog, which the
-    tool-calling agent in :mod:`app.rag.agent` binds to the model. Two
-    conventions matter here:
-
-    * ``{{user_id}}`` is a *server* slot — resolved from ``tenant_id`` via
-      ``self_user_id`` below, never supplied by the model. The ``users``
-      table only ever holds the tenant's own self-profile, so there is
-      exactly one correct value per tenant.
-    * every statement carries ``deleted_at IS NULL`` so soft-deleted rows
-      stay invisible, and no statement ends in ``;`` (the executor wraps
-      the SQL in a ``SELECT * FROM (...) LIMIT n`` subquery).
-    """
+    # Mock grounding (PR 2 / PR 3): list tables scoped to a tenant so the
+    # agent can validate ``course_id_mock`` / ``assignment_id_mock`` ints
+    # before letting them reach the SQL template.
     registry.register(
-        "self_user_id",
-        "SELECT id FROM users WHERE tenant_id = {{tenant_id}} AND deleted_at IS NULL ORDER BY created_at LIMIT 1",
+        "mock_courses_list",
+        "SELECT canvas_mock_id FROM canvas_mock_courses WHERE tenant_id = {{tenant_id}} AND deleted_at IS NULL ORDER BY canvas_mock_id",
         slots={"tenant_id"},
     )
     registry.register(
-        "get_user_profile",
-        "SELECT id, name, short_name, email, canvas_id "
-        "FROM users "
-        "WHERE tenant_id = {{tenant_id}} AND id = {{user_id}} AND deleted_at IS NULL",
-        slots={"tenant_id", "user_id"},
+        "mock_assignments_list",
+        "SELECT canvas_mock_id FROM canvas_mock_assignments WHERE tenant_id = {{tenant_id}} AND deleted_at IS NULL ORDER BY canvas_mock_id",
+        slots={"tenant_id"},
+    )
+    _register_mock_agent_tools(registry)
+    return registry
+
+
+# ---------------------------------------------------------------------------
+# Mock Agent Tools (PR 2 / PR 3)
+# ---------------------------------------------------------------------------
+#
+# Nine templates mirroring the legacy nine agent tools. They read from
+# the ``canvas_mock_*`` tables introduced in PR 1. Stubs in PR 2;
+# PR 3 fills the missing FROM/JOIN blocks when the mock extractor
+# (PR 4) is online.
+#
+# IMPORTANT: these templates are the LLM-facing catalog. The legacy
+# ``_register_agent_tools`` block below is kept (commented out) for
+# forensics so an operator can grep the prior SQL easily.
+
+
+def _register_mock_agent_tools(registry: AllowList) -> None:
+    """Register the nine mock templates exposed to the LLM as tools.
+
+    Same conventions as the legacy block: every statement carries
+    ``tenant_id`` and ``deleted_at IS NULL``; no statement ends in
+    ``;``. ``user_id_mock`` is a server slot — resolved from
+    ``tenant_id`` via ``self_mock_user_id`` below, never supplied by
+    the model.
+    """
+    registry.register(
+        "self_mock_user_id",
+        "SELECT canvas_mock_id FROM canvas_mock_users WHERE tenant_id = {{tenant_id}} AND deleted_at IS NULL ORDER BY created_at LIMIT 1",
+        slots={"tenant_id"},
     )
     registry.register(
-        "get_user_courses",
-        "SELECT c.id, c.name, c.course_code, c.start_at, c.end_at, e.role, e.enrollment_state "
-        "FROM courses c "
-        "JOIN enrollments e ON c.id = e.course_id AND e.tenant_id = c.tenant_id "
-        "WHERE c.tenant_id = {{tenant_id}} AND e.user_id = {{user_id}} "
+        "get_user_mock_courses",
+        "SELECT c.canvas_mock_id, c.name, c.course_code, c.workflow_state, c.start_at, c.end_at "
+        "FROM canvas_mock_courses c "
+        "JOIN canvas_mock_enrollments e ON e.course_canvas_mock_id = c.canvas_mock_id AND e.tenant_id = c.tenant_id "
+        "WHERE c.tenant_id = {{tenant_id}} AND e.user_canvas_mock_id = {{user_id_mock}} "
         "AND c.deleted_at IS NULL AND e.deleted_at IS NULL "
         "ORDER BY c.name",
-        slots={"tenant_id", "user_id"},
+        slots={"tenant_id", "user_id_mock"},
     )
     registry.register(
-        "get_course_assignments",
-        "SELECT id, name, description, points_possible, due_at, grading_type "
-        "FROM assignments "
-        "WHERE tenant_id = {{tenant_id}} AND course_id = {{course_id}} AND deleted_at IS NULL "
+        "get_mock_course_details",
+        "SELECT canvas_mock_id, name, course_code, workflow_state, start_at, end_at, enrollments_count "
+        "FROM canvas_mock_courses "
+        "WHERE tenant_id = {{tenant_id}} AND canvas_mock_id = {{course_id}} AND deleted_at IS NULL",
+        slots={"tenant_id", "course_id"},
+    )
+    registry.register(
+        "get_mock_course_assignments",
+        "SELECT canvas_mock_id, name, description, points_possible, due_at, grading_type, workflow_state "
+        "FROM canvas_mock_assignments "
+        "WHERE tenant_id = {{tenant_id}} AND course_canvas_mock_id = {{course_id}} AND deleted_at IS NULL "
         "ORDER BY due_at ASC",
         slots={"tenant_id", "course_id"},
     )
     registry.register(
-        "get_assignment_details",
-        "SELECT id, name, description, points_possible, due_at, unlock_at, lock_at, "
-        "grading_type, workflow_state "
-        "FROM assignments "
-        "WHERE tenant_id = {{tenant_id}} AND id = {{assignment_id}} AND deleted_at IS NULL",
+        "get_mock_assignment_details",
+        "SELECT canvas_mock_id, name, description, points_possible, due_at, grading_type, workflow_state "
+        "FROM canvas_mock_assignments "
+        "WHERE tenant_id = {{tenant_id}} AND canvas_mock_id = {{assignment_id}} AND deleted_at IS NULL",
         slots={"tenant_id", "assignment_id"},
     )
     registry.register(
-        "get_user_course_submissions",
-        "SELECT a.name AS assignment_name, s.score, a.points_possible, s.grade, "
-        "s.submitted_at, s.late, s.missing, s.excused "
-        "FROM submissions s "
-        "JOIN assignments a ON s.assignment_id = a.id AND a.tenant_id = s.tenant_id "
-        "WHERE s.tenant_id = {{tenant_id}} AND s.user_id = {{user_id}} "
-        "AND a.course_id = {{course_id}} "
-        "AND s.deleted_at IS NULL AND a.deleted_at IS NULL "
+        "get_user_mock_grades",
+        "SELECT g.assignment_canvas_mock_id, g.user_canvas_mock_id, g.score, g.grade, g.graded_at, g.grader_id "
+        "FROM canvas_mock_grades g "
+        "WHERE g.tenant_id = {{tenant_id}} AND g.user_canvas_mock_id = {{user_id_mock}} "
+        "AND g.deleted_at IS NULL "
+        "ORDER BY g.graded_at DESC",
+        slots={"tenant_id", "user_id_mock"},
+    )
+    registry.register(
+        "get_user_mock_course_grades",
+        "SELECT g.assignment_canvas_mock_id, g.user_canvas_mock_id, g.score, g.grade, g.graded_at, g.grader_id "
+        "FROM canvas_mock_grades g "
+        "JOIN canvas_mock_assignments a ON a.canvas_mock_id = g.assignment_canvas_mock_id AND a.tenant_id = g.tenant_id "
+        "WHERE g.tenant_id = {{tenant_id}} AND g.user_canvas_mock_id = {{user_id_mock}} "
+        "AND a.course_canvas_mock_id = {{course_id}} "
+        "AND g.deleted_at IS NULL AND a.deleted_at IS NULL "
+        "ORDER BY g.graded_at DESC",
+        slots={"tenant_id", "user_id_mock", "course_id"},
+    )
+    registry.register(
+        "get_user_missing_mock_assignments",
+        "SELECT a.canvas_mock_id, a.name, a.due_at, a.points_possible, a.course_canvas_mock_id, c.name AS course_name "
+        "FROM canvas_mock_assignments a "
+        "JOIN canvas_mock_courses c ON c.canvas_mock_id = a.course_canvas_mock_id AND c.tenant_id = a.tenant_id "
+        "LEFT JOIN canvas_mock_grades g ON g.assignment_canvas_mock_id = a.canvas_mock_id "
+        "AND g.user_canvas_mock_id = {{user_id_mock}} AND g.tenant_id = a.tenant_id "
+        "WHERE a.tenant_id = {{tenant_id}} "
+        "AND g.id IS NULL AND a.due_at IS NOT NULL AND a.due_at < now() "
+        "AND a.deleted_at IS NULL AND c.deleted_at IS NULL "
         "ORDER BY a.due_at ASC",
-        slots={"tenant_id", "user_id", "course_id"},
+        slots={"tenant_id", "user_id_mock"},
     )
     registry.register(
-        "get_user_missing_submissions",
-        "SELECT c.name AS course_name, a.name AS assignment_name, a.due_at, a.points_possible "
-        "FROM submissions s "
-        "JOIN assignments a ON s.assignment_id = a.id AND a.tenant_id = s.tenant_id "
-        "JOIN courses c ON a.course_id = c.id AND c.tenant_id = a.tenant_id "
-        "WHERE s.tenant_id = {{tenant_id}} AND s.user_id = {{user_id}} AND s.missing = true "
-        "AND s.deleted_at IS NULL AND a.deleted_at IS NULL AND c.deleted_at IS NULL "
-        "ORDER BY a.due_at ASC",
-        slots={"tenant_id", "user_id"},
+        "get_user_attendance",
+        "SELECT r.class_session_canvas_mock_id, r.user_canvas_mock_id, r.status, "
+        "s.canvas_mock_id AS session_id, s.course_canvas_mock_id, s.start_at, s.end_at "
+        "FROM canvas_mock_attendance_records r "
+        "JOIN canvas_mock_class_sessions s ON s.canvas_mock_id = r.class_session_canvas_mock_id AND s.tenant_id = r.tenant_id "
+        "WHERE r.tenant_id = {{tenant_id}} AND r.user_canvas_mock_id = {{user_id_mock}} "
+        "AND r.deleted_at IS NULL AND s.deleted_at IS NULL "
+        "ORDER BY s.start_at DESC",
+        slots={"tenant_id", "user_id_mock"},
     )
     registry.register(
-        "get_user_late_submissions",
-        "SELECT c.name AS course_name, a.name AS assignment_name, s.submitted_at, "
-        "a.due_at, s.score, s.grade "
-        "FROM submissions s "
-        "JOIN assignments a ON s.assignment_id = a.id AND a.tenant_id = s.tenant_id "
-        "JOIN courses c ON a.course_id = c.id AND c.tenant_id = a.tenant_id "
-        "WHERE s.tenant_id = {{tenant_id}} AND s.user_id = {{user_id}} AND s.late = true "
-        "AND s.deleted_at IS NULL AND a.deleted_at IS NULL AND c.deleted_at IS NULL "
-        "ORDER BY s.submitted_at DESC",
-        slots={"tenant_id", "user_id"},
-    )
-    registry.register(
-        "get_course_details",
-        "SELECT id, name, course_code, start_at, end_at, workflow_state, enrollments_count "
-        "FROM courses "
-        "WHERE tenant_id = {{tenant_id}} AND id = {{course_id}} AND deleted_at IS NULL",
+        "get_mock_class_sessions",
+        "SELECT canvas_mock_id, course_canvas_mock_id, start_at, end_at "
+        "FROM canvas_mock_class_sessions "
+        "WHERE tenant_id = {{tenant_id}} AND course_canvas_mock_id = {{course_id}} AND deleted_at IS NULL "
+        "ORDER BY start_at ASC",
         slots={"tenant_id", "course_id"},
     )
+
+
+# ---------------------------------------------------------------------------
+# DEPRECATED: legacy _register_agent_tools (PR 2 task 2.3)
+# ---------------------------------------------------------------------------
+# The legacy nine templates (UUID-based, real Canvas tables) are no
+# longer bound to the LLM. They remain on disk with `# DEPRECATED:`
+# headers so an operator can grep them for forensics. The live catalog
+# is built by ``_register_mock_agent_tools`` above.
+
+
+# pragma: no cover — the legacy block is kept as a static, dead-code
+# artifact for forensics. Removing it would decouple the audit trail
+# from the migration story.
+_DEPRECATED_REGISTER_AGENT_TOOLS = """
+# DEPRECATED: legacy _register_agent_tools (PR 2 task 2.3)
+def _register_agent_tools(registry: AllowList) -> None:
+    \"\"\"Legacy UUID-keyed Canvas templates — superseded by
+    :func:`_register_mock_agent_tools`. Kept here for forensic
+    reference; do not register or invoke it.\"\"\"
     registry.register(
-        "get_user_courses_current_term",
-        "SELECT id, name, course_code, term_name "
-        "FROM courses "
-        "WHERE tenant_id = {{tenant_id}} AND deleted_at IS NULL "
-        "AND term_name LIKE :term_pattern "
-        "ORDER BY name LIMIT 100",
-        slots={"tenant_id", "term_pattern"},
+        \"self_user_id\",
+        \"SELECT id FROM users WHERE tenant_id = {{tenant_id}} AND deleted_at IS NULL ORDER BY created_at LIMIT 1\",
+        slots={\"tenant_id\"},
     )
+    registry.register(
+        \"get_user_profile\",
+        \"SELECT id, name, short_name, email, canvas_id FROM users WHERE tenant_id = {{tenant_id}} AND id = {{user_id}} AND deleted_at IS NULL\",
+        slots={\"tenant_id\", \"user_id\"},
+    )
+    # ... (six more entries truncated; see git history)
+"""
 
 
 ALLOW_LIST = default_allow_list()

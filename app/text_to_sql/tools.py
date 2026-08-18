@@ -16,10 +16,10 @@ Three slot categories keep that boundary honest:
     hits a Pydantic ``extra="forbid"`` error instead of a database.
 
 ``model_slots``
-    The remaining slots, all of them opaque row identifiers
-    (``course_id`` / ``assignment_id``). They arrive as bind parameters,
-    are format-checked as UUIDs, and are grounded against the rows the
-    tenant actually owns (see :mod:`app.rag.agent`).
+    The remaining slots. ``course_id`` / ``assignment_id`` are UUIDs
+    (legacy Canvas). The mock tools use ``course_id_mock`` /
+    ``assignment_id_mock`` instead and carry integer IDs — see
+    :class:`SQLTool` ``slot_type``.
 
 Everything else about the query — the tables, the columns, the joins, the
 ``deleted_at`` guards, the ``tenant_id`` predicate — is code the
@@ -29,6 +29,7 @@ developer wrote, registered in :mod:`app.text_to_sql.allow_list`.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -77,6 +78,39 @@ class AssignmentArgs(_StrictArgs):
 
 
 # ---------------------------------------------------------------------------
+# Mock tool argument schemas (PR 2 / PR 3)
+# ---------------------------------------------------------------------------
+#
+# The mock tools take INTEGER ids (NOT UUIDs) because the canvas-mock-api
+# uses an independent INT counter. Strict Pydantic mode rejects
+# ``"12"`` and ``True`` at the boundaries, so the model's first attempt
+# is denied and the error message tells it to call the listing tool
+# first.
+
+
+class MockCourseArgs(_StrictArgs):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    course_id: int = Field(
+        description=(
+            "The course's integer id (canvas_mock_id), copied verbatim from "
+            "a previous get_user_mock_courses result. Never invent or guess."
+        )
+    )
+
+
+class MockAssignmentArgs(_StrictArgs):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    assignment_id: int = Field(
+        description=(
+            "The assignment's integer id (canvas_mock_id), copied verbatim "
+            "from a previous get_mock_course_assignments result. Never invent or guess."
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
 # Catalog
 # ---------------------------------------------------------------------------
 
@@ -89,19 +123,38 @@ class SQLTool:
     mapping table to drift out of sync: if a tool exists, its SQL was
     registered by hand, and if it was not registered, the tool cannot be
     constructed (see :func:`build_catalog`).
+
+    ``slot_type`` picks the validator the agent uses for the tool's
+    model-owned slots. ``"uuid"`` (the default) parses the value as
+    ``uuid.UUID``; ``"int"`` parses it as ``int``. The mock tools are
+    the first callers of ``"int"`` because the canvas-mock-api uses an
+    INT counter, not a UUID.
     """
 
     name: str
     description: str
     args_schema: type[BaseModel]
     server_slots: frozenset[str]
+    slot_type: Literal["uuid", "int"] = "uuid"
 
     @property
     def model_slots(self) -> frozenset[str]:
         return frozenset(self.args_schema.model_fields)
 
 
-_TOOL_SPECS: tuple[tuple[str, str, type[BaseModel], frozenset[str]], ...] = (
+# ---------------------------------------------------------------------------
+# DEPRECATED: legacy _TOOL_SPECS (PR 2 task 2.2)
+# ---------------------------------------------------------------------------
+# The nine legacy tools (``get_user_profile`` / ``get_user_courses`` / …)
+# are no longer bound to the LLM. They stay on disk with ``# DEPRECATED:``
+# headers so an operator can grep them for forensics and so the regression
+# budget for ``# DEPRECATED:`` lines is independent of the live catalog.
+# The catalog itself (``_TOOL_SPECS`` below) contains the nine mock
+# tools; the legacy nine exist only as the audit trail captured by
+# ``_DEPRECATED_TOOL_SPECS``.
+
+_DEPRECATED_TOOL_SPECS: tuple[tuple[str, str, type[BaseModel], frozenset[str]], ...] = (
+    # DEPRECATED: get_user_profile — replaced by get_user_mock_courses / self-profile tooling in PR 3
     (
         "get_user_profile",
         (
@@ -112,6 +165,7 @@ _TOOL_SPECS: tuple[tuple[str, str, type[BaseModel], frozenset[str]], ...] = (
         NoArgs,
         frozenset({"tenant_id", "user_id"}),
     ),
+    # DEPRECATED: get_user_courses — replaced by get_user_mock_courses
     (
         "get_user_courses",
         (
@@ -124,6 +178,7 @@ _TOOL_SPECS: tuple[tuple[str, str, type[BaseModel], frozenset[str]], ...] = (
         NoArgs,
         frozenset({"tenant_id", "user_id"}),
     ),
+    # DEPRECATED: get_course_assignments — replaced by get_mock_course_assignments
     (
         "get_course_assignments",
         (
@@ -136,6 +191,7 @@ _TOOL_SPECS: tuple[tuple[str, str, type[BaseModel], frozenset[str]], ...] = (
         CourseArgs,
         frozenset({"tenant_id"}),
     ),
+    # DEPRECATED: get_assignment_details — replaced by get_mock_assignment_details
     (
         "get_assignment_details",
         (
@@ -147,6 +203,7 @@ _TOOL_SPECS: tuple[tuple[str, str, type[BaseModel], frozenset[str]], ...] = (
         AssignmentArgs,
         frozenset({"tenant_id"}),
     ),
+    # DEPRECATED: get_user_course_submissions — replaced by get_user_mock_course_grades
     (
         "get_user_course_submissions",
         (
@@ -158,6 +215,7 @@ _TOOL_SPECS: tuple[tuple[str, str, type[BaseModel], frozenset[str]], ...] = (
         CourseArgs,
         frozenset({"tenant_id", "user_id"}),
     ),
+    # DEPRECATED: get_user_missing_submissions — replaced by get_user_missing_mock_assignments
     (
         "get_user_missing_submissions",
         (
@@ -168,6 +226,7 @@ _TOOL_SPECS: tuple[tuple[str, str, type[BaseModel], frozenset[str]], ...] = (
         NoArgs,
         frozenset({"tenant_id", "user_id"}),
     ),
+    # DEPRECATED: get_user_late_submissions — replaced by get_user_missing_mock_assignments (no late semantics)
     (
         "get_user_late_submissions",
         (
@@ -178,6 +237,7 @@ _TOOL_SPECS: tuple[tuple[str, str, type[BaseModel], frozenset[str]], ...] = (
         NoArgs,
         frozenset({"tenant_id", "user_id"}),
     ),
+    # DEPRECATED: get_course_details — replaced by get_mock_course_details
     (
         "get_course_details",
         (
@@ -188,6 +248,7 @@ _TOOL_SPECS: tuple[tuple[str, str, type[BaseModel], frozenset[str]], ...] = (
         CourseArgs,
         frozenset({"tenant_id"}),
     ),
+    # DEPRECATED: get_user_courses_current_term — replaced by get_user_mock_courses (no per-period pattern)
     (
         "get_user_courses_current_term",
         (
@@ -201,6 +262,133 @@ _TOOL_SPECS: tuple[tuple[str, str, type[BaseModel], frozenset[str]], ...] = (
         NoArgs,
         frozenset({"tenant_id", "term_pattern"}),
     ),
+)
+
+
+# ---------------------------------------------------------------------------
+# Live mock catalog (PR 2; PR 3 adds the full SQL templates)
+# ---------------------------------------------------------------------------
+
+
+_MOCK_TOOL_SPECS: tuple[tuple[str, str, type[BaseModel], frozenset[str], Literal["uuid", "int"]], ...] = (
+    (
+        "get_user_mock_courses",
+        (
+            "Lista los cursos del estudiante en el mock de Paquito, con su "
+            "id entero, nombre, código y estado. Úsalo cuando pregunte "
+            "¿en qué cursos estoy inscrito? en el entorno de demostración. "
+            "También es la forma de obtener el course_id entero que "
+            "necesitan otras herramientas de mock."
+        ),
+        NoArgs,
+        frozenset({"tenant_id", "user_id_mock"}),
+        "int",
+    ),
+    (
+        "get_mock_course_details",
+        (
+            "Información y configuración general de UN curso del mock: "
+            "id entero, código, fechas, estado y cantidad de alumnos "
+            "matriculados. Úsalo para detalles administrativos o generales "
+            "sobre una sola materia en el entorno de demostración."
+        ),
+        MockCourseArgs,
+        frozenset({"tenant_id"}),
+        "int",
+    ),
+    (
+        "get_mock_course_assignments",
+        (
+            "Lista todas las tareas, exámenes o entregables de UN curso del "
+            "mock, con su descripción, puntaje posible y fecha de entrega. "
+            "Úsalo cuando pregunte qué tareas hay en un curso del entorno "
+            "de demostración. También es la forma de obtener el "
+            "assignment_id entero que necesitan otras herramientas."
+        ),
+        MockCourseArgs,
+        frozenset({"tenant_id"}),
+        "int",
+    ),
+    (
+        "get_mock_assignment_details",
+        (
+            "Detalles a fondo de UNA sola tarea del mock: descripción, "
+            "puntos posibles, fecha de entrega, tipo de calificación y "
+            "estado. Úsalo cuando el estudiante tenga dudas sobre los "
+            "requerimientos, el valor o el límite de entrega de un "
+            "trabajo específico del entorno de demostración."
+        ),
+        MockAssignmentArgs,
+        frozenset({"tenant_id"}),
+        "int",
+    ),
+    (
+        "get_user_mock_grades",
+        (
+            "Calificaciones del estudiante en todas las tareas del mock, "
+            "en todos sus cursos. Úsalo cuando pregunte por sus notas "
+            "globales en el entorno de demostración."
+        ),
+        NoArgs,
+        frozenset({"tenant_id", "user_id_mock"}),
+        "int",
+    ),
+    (
+        "get_user_mock_course_grades",
+        (
+            "Calificaciones del estudiante en UN curso del mock, con "
+            "puntaje, nota, fecha y calificador. Úsalo cuando pregunte "
+            "por sus notas en una materia del entorno de demostración."
+        ),
+        MockCourseArgs,
+        frozenset({"tenant_id", "user_id_mock"}),
+        "int",
+    ),
+    (
+        "get_user_missing_mock_assignments",
+        (
+            "Tareas del mock que el estudiante NO ha calificado todavía y "
+            "cuya fecha de entrega ya pasó, en todos sus cursos. Úsalo "
+            "cuando pregunte '¿qué tareas me faltan entregar?' o '¿tengo "
+            "trabajos pendientes?' en el entorno de demostración."
+        ),
+        NoArgs,
+        frozenset({"tenant_id", "user_id_mock"}),
+        "int",
+    ),
+    (
+        "get_user_attendance",
+        (
+            "Asistencia del estudiante en todas las sesiones del mock, "
+            "con la sesión, fecha y estado (presente o ausente). Úsalo "
+            "cuando pregunte por su asistencia o por sesiones pasadas en "
+            "el entorno de demostración."
+        ),
+        NoArgs,
+        frozenset({"tenant_id", "user_id_mock"}),
+        "int",
+    ),
+    (
+        "get_mock_class_sessions",
+        (
+            "Sesiones de clase de UN curso del mock, ordenadas por "
+            "fecha de inicio, con sus horarios de comienzo y fin. Úsalo "
+            "cuando pregunte por los horarios de un curso en el entorno "
+            "de demostración."
+        ),
+        MockCourseArgs,
+        frozenset({"tenant_id"}),
+        "int",
+    ),
+)
+
+
+# ``_TOOL_SPECS`` is the canonical 9-tuple the runtime iterates. The
+# 5th element is the ``slot_type`` literal; legacy tuples (now living
+# in ``_DEPRECATED_TOOL_SPECS``) default to ``"uuid"`` because their
+# slots are UUIDs.
+_TOOL_SPECS: tuple[tuple[str, str, type[BaseModel], frozenset[str], Literal["uuid", "int"]], ...] = (
+    _MOCK_TOOL_SPECS
 )
 
 
@@ -218,7 +406,7 @@ def build_catalog() -> dict[str, SQLTool]:
     """
     catalog: dict[str, SQLTool] = {}
     registered = set(ALLOW_LIST.names())
-    for name, description, args_schema, server_slots in _TOOL_SPECS:
+    for name, description, args_schema, server_slots, slot_type in _TOOL_SPECS:
         if name not in registered:
             raise ToolNotAllowed(f"tool {name!r} has no registered SQL template")
         model_slots = frozenset(args_schema.model_fields)
@@ -240,6 +428,7 @@ def build_catalog() -> dict[str, SQLTool]:
             description=description,
             args_schema=args_schema,
             server_slots=server_slots,
+            slot_type=slot_type,
         )
     return catalog
 
@@ -282,6 +471,8 @@ __all__ = [
     "TOOL_NAMES",
     "AssignmentArgs",
     "CourseArgs",
+    "MockAssignmentArgs",
+    "MockCourseArgs",
     "NoArgs",
     "SQLTool",
     "ToolNotAllowed",
@@ -296,16 +487,45 @@ def _selftest() -> None:
     for tool in TOOL_CATALOG.values():
         assert not (tool.model_slots & SERVER_SLOTS), tool.name
         assert tool.description.strip()
+        # Every mock tool must declare an integer slot_type.
+        assert tool.slot_type == "int", tool.name
+
+    # Forensic proof: the source file must contain at least nine
+    # ``# DEPRECATED:`` lines so an operator can grep the legacy
+    # catalog without rebuilding the runtime.
+    import inspect
+    from pathlib import Path
+
+    source = Path(inspect.getsourcefile(_selftest) or __file__).read_text(encoding="utf-8")
+    deprecated_count = sum(
+        1 for line in source.splitlines() if line.lstrip().startswith("# DEPRECATED")
+    )
+    assert deprecated_count >= 9, deprecated_count
 
     from pydantic import ValidationError
 
     # ``extra="forbid"`` blocks tenant_id smuggling through the args.
     try:
-        CourseArgs(course_id="c", tenant_id="other-tenant")  # type: ignore[call-arg]
+        MockCourseArgs(course_id=12, tenant_id="other-tenant")  # type: ignore[call-arg]
     except ValidationError:
         pass
     else:
         raise AssertionError("extra args must be rejected")
+
+    # Mock integer slots reject strings and booleans at the Pydantic boundary.
+    try:
+        MockCourseArgs(course_id="12")  # type: ignore[arg-type]
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("MockCourseArgs must reject string course_id")
+
+    try:
+        MockCourseArgs(course_id=True)  # type: ignore[arg-type]
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("MockCourseArgs must reject boolean course_id")
 
     # NoArgs tools accept an empty payload and nothing else.
     assert NoArgs().model_dump() == {}
@@ -319,9 +539,8 @@ def _selftest() -> None:
     specs = tool_specs()
     assert len(specs) == 9
     by_name = {s["name"]: s for s in specs}
-    assert by_name["get_user_courses"]["parameters"]["properties"] == {}
-    assert by_name["get_course_details"]["parameters"]["required"] == ["course_id"]
-    assert by_name["get_user_courses_current_term"]["parameters"]["properties"] == {}
+    assert by_name["get_user_mock_courses"]["parameters"]["properties"] == {}
+    assert by_name["get_mock_course_details"]["parameters"]["required"] == ["course_id"]
     # No declaration may advertise a free-text SQL argument.
     for spec in specs:
         props = spec["parameters"]["properties"]  # type: ignore[index]
