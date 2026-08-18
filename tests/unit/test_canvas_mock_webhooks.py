@@ -24,6 +24,7 @@ from app.models import (
     Base,
     CanvasMockAssignment,
     CanvasMockGrade,
+    CanvasMockUser,
     CanvasMockWebhookEvent,
     CanvasMockWebhookSubscription,
 )
@@ -81,13 +82,27 @@ def app(app_settings: dict[str, str], monkeypatch: pytest.MonkeyPatch, sqlite_en
     factory = sessionmaker(bind=sqlite_engine)
     monkeypatch.setattr(controller_module, "_session_factory", factory)
     # Seed the subscription so the tenant can be resolved.
+    admin_tenant_id = uuid.uuid4()
     with factory() as session:
         session.add(
             CanvasMockWebhookSubscription(
-                tenant_id=uuid.uuid4(),
+                tenant_id=admin_tenant_id,
                 target_url="https://example.com/hooks/canvas-mock",
                 secret="test-webhook-secret",
                 event_types=["grade.posted", "assignment.created", "assignment.updated"],
+            )
+        )
+        # Seed the admin CanvasMockUser row. The mock's webhook header
+        # carries the integer ``canvas_mock_id`` of the admin who
+        # registered the key; the receiver translates it to Primer's
+        # tenant_id (UUID) via this row.
+        session.add(
+            CanvasMockUser(
+                tenant_id=admin_tenant_id,
+                canvas_mock_id=1,
+                name="Admin",
+                role="admin",
+                api_key_prefix="adm_test",
             )
         )
         session.commit()
@@ -129,6 +144,16 @@ def _resolve_tenant_id(app: FastAPI) -> uuid.UUID:
         return session.query(CanvasMockWebhookSubscription).one().tenant_id
 
 
+# The mock's webhook header carries the integer ``canvas_mock_id`` of
+# the admin user who registered the key. The fixture seeds one admin
+# with this id; tests use it as the value of ``X-Canvas-Mock-Tenant-Id``.
+_ADMIN_MOCK_ID = 1
+
+
+def _admin_header() -> str:
+    return str(_ADMIN_MOCK_ID)
+
+
 def test_valid_signature_returns_200(client: TestClient, app: FastAPI) -> None:
     """A correctly-signed POST is accepted and persisted."""
     tenant_id = _resolve_tenant_id(app)
@@ -137,7 +162,7 @@ def test_valid_signature_returns_200(client: TestClient, app: FastAPI) -> None:
     headers = _signed_headers(
         "test-webhook-secret", body, ts, "grade.posted", 42
     )
-    headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
+    headers["X-Canvas-Mock-Tenant-Id"] = _admin_header()
     response = client.post("/webhooks/canvas-mock", content=body, headers=headers)
     assert response.status_code == 200, response.text
     body_json = response.json()
@@ -152,7 +177,7 @@ def test_invalid_signature_returns_401(client: TestClient, app: FastAPI) -> None
     headers = _signed_headers(
         "WRONG_SECRET", body, ts, "grade.posted", 42
     )
-    headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
+    headers["X-Canvas-Mock-Tenant-Id"] = _admin_header()
     response = client.post("/webhooks/canvas-mock", content=body, headers=headers)
     assert response.status_code == 401
     # A row was written for forensics with ``result="signature_failed"``.
@@ -176,7 +201,7 @@ def test_duplicate_post_returns_duplicate(client: TestClient, app: FastAPI) -> N
     headers = _signed_headers(
         "test-webhook-secret", body, ts, "grade.posted", 42
     )
-    headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
+    headers["X-Canvas-Mock-Tenant-Id"] = _admin_header()
     first = client.post("/webhooks/canvas-mock", content=body, headers=headers)
     second = client.post("/webhooks/canvas-mock", content=body, headers=headers)
     assert first.status_code == 200
@@ -211,7 +236,7 @@ def test_timestamp_drift_returns_401(client: TestClient, app: FastAPI) -> None:
     headers = _signed_headers(
         "test-webhook-secret", body, ts, "grade.posted", 42
     )
-    headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
+    headers["X-Canvas-Mock-Tenant-Id"] = _admin_header()
     response = client.post("/webhooks/canvas-mock", content=body, headers=headers)
     assert response.status_code == 401
 
@@ -235,7 +260,7 @@ def test_handler_error_writes_signature_failed_row(client: TestClient, app: Fast
     headers = _signed_headers(
         "test-webhook-secret", body, ts, "grade.posted", 9
     )
-    headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
+    headers["X-Canvas-Mock-Tenant-Id"] = _admin_header()
     response = client.post("/webhooks/canvas-mock", content=body, headers=headers)
     assert response.status_code == 200
     import app.controllers.canvas_mock_webhooks as controller_module
@@ -260,7 +285,7 @@ def test_cross_tenant_attempt_uses_explicit_header(
     headers = _signed_headers(
         "test-webhook-secret", body, ts, "grade.posted", 42
     )
-    headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
+    headers["X-Canvas-Mock-Tenant-Id"] = _admin_header()
     response = client.post("/webhooks/canvas-mock", content=body, headers=headers)
     assert response.status_code == 200
     import app.controllers.canvas_mock_webhooks as controller_module
@@ -297,7 +322,7 @@ def test_v2_handler_invoked_with_tenant_id_and_session(
     headers = _signed_headers(
         "test-webhook-secret", body, ts, "grade.posted", 42
     )
-    headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
+    headers["X-Canvas-Mock-Tenant-Id"] = _admin_header()
     response = client.post("/webhooks/canvas-mock", content=body, headers=headers)
     assert response.status_code == 200
     assert captured["tenant_id"] == tenant_id
@@ -323,7 +348,7 @@ def test_v2_handler_raises_writes_handler_error_row(
     headers = _signed_headers(
         "test-webhook-secret", body, ts, "grade.posted", 42
     )
-    headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
+    headers["X-Canvas-Mock-Tenant-Id"] = _admin_header()
     response = client.post("/webhooks/canvas-mock", content=body, headers=headers)
     # The controller returns 200 even when the handler fails; the
     # ``result`` column is the audit trail for the failure.
@@ -363,7 +388,7 @@ def test_v2_assignment_created_upserts_assignment_row(
     headers = _signed_headers(
         "test-webhook-secret", payload, ts, "assignment.created", 501
     )
-    headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
+    headers["X-Canvas-Mock-Tenant-Id"] = _admin_header()
     response = client.post("/webhooks/canvas-mock", content=payload, headers=headers)
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "queued"
@@ -405,7 +430,7 @@ def test_v2_assignment_updated_upserts_assignment_row(
     headers = _signed_headers(
         "test-webhook-secret", payload, ts, "assignment.updated", 502
     )
-    headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
+    headers["X-Canvas-Mock-Tenant-Id"] = _admin_header()
     response = client.post("/webhooks/canvas-mock", content=payload, headers=headers)
     assert response.status_code == 200, response.text
 
@@ -444,7 +469,7 @@ def test_v2_grade_posted_upserts_grade_row(
     headers = _signed_headers(
         "test-webhook-secret", payload, ts, "grade.posted", 99
     )
-    headers["X-Canvas-Mock-Tenant-Id"] = str(tenant_id)
+    headers["X-Canvas-Mock-Tenant-Id"] = _admin_header()
     response = client.post("/webhooks/canvas-mock", content=payload, headers=headers)
     assert response.status_code == 200, response.text
 
@@ -463,3 +488,77 @@ def test_v2_grade_posted_upserts_grade_row(
         assert row.score == 18.0
         assert row.grade == "B+"
         assert row.grader_id == 3
+
+
+# ---------------------------------------------------------------------------
+# X-Canvas-Mock-Tenant-Id is an INT (the mock's institutions.id), not a
+# UUID. The receiver translates it to the Primer tenant_id via the
+# ``canvas_mock_users`` table (the admin row that registered the mock
+# key).
+# ---------------------------------------------------------------------------
+
+
+def test_tenant_id_header_resolves_to_uuid_via_canvas_mock_users(
+    client: TestClient, app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The receiver looks up the integer ``canvas_mock_id`` from the
+    header in ``canvas_mock_users`` and passes the resolved UUID
+    ``tenant_id`` to the handler — NOT the raw integer.
+
+    This pins the contract introduced to fix the
+    ``ValueError: badly formed hexadecimal UUID string`` bug: the
+    mock's institutions table is keyed by INT, so the header is also
+    an INT.
+    """
+    from app.controllers.canvas_mock_webhooks import _HANDLERS
+
+    tenant_id = _resolve_tenant_id(app)
+    captured: dict[str, Any] = {}
+
+    def _capture(tenant_id_arg: uuid.UUID, raw_body: bytes, session: Any) -> None:
+        captured["tenant_id"] = tenant_id_arg
+        captured["raw_body"] = raw_body
+
+    monkeypatch.setitem(_HANDLERS, "grade.posted", _capture)
+
+    body = b'{"grade_id": 7, "score": 18.0}'
+    ts = _now()
+    headers = _signed_headers("test-webhook-secret", body, ts, "grade.posted", 42)
+    headers["X-Canvas-Mock-Tenant-Id"] = _admin_header()
+
+    response = client.post("/webhooks/canvas-mock", content=body, headers=headers)
+    assert response.status_code == 200, response.text
+    # The handler MUST receive the resolved Primer tenant_id (UUID),
+    # not the raw integer from the header.
+    assert captured["tenant_id"] == tenant_id
+    assert isinstance(captured["tenant_id"], uuid.UUID)
+    assert captured["tenant_id"] != _ADMIN_MOCK_ID
+
+
+def test_unknown_tenant_id_header_returns_400(
+    client: TestClient, app: FastAPI
+) -> None:
+    """An integer header that does not match any ``canvas_mock_users``
+    row is rejected with 400. A webhook for an unregistered tenant
+    is a configuration error — the mock would never send one for a
+    tenant that never registered the key."""
+    body = b'{"grade_id": 7}'
+    ts = _now()
+    headers = _signed_headers("test-webhook-secret", body, ts, "grade.posted", 42)
+    headers["X-Canvas-Mock-Tenant-Id"] = "999999"  # not seeded
+
+    response = client.post("/webhooks/canvas-mock", content=body, headers=headers)
+    assert response.status_code == 400, response.text
+
+
+def test_malformed_tenant_id_header_returns_400(
+    client: TestClient, app: FastAPI
+) -> None:
+    """A non-integer header is rejected with 400 (was 500 unhandled)."""
+    body = b'{"grade_id": 7}'
+    ts = _now()
+    headers = _signed_headers("test-webhook-secret", body, ts, "grade.posted", 42)
+    headers["X-Canvas-Mock-Tenant-Id"] = "not-an-integer"
+
+    response = client.post("/webhooks/canvas-mock", content=body, headers=headers)
+    assert response.status_code == 400, response.text
