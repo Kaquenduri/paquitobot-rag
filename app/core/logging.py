@@ -113,10 +113,27 @@ def get_logger(name: str | None = None) -> Any:
     return structlog.get_logger(name)
 
 
+def configure_console_encoding() -> None:
+    """Force UTF-8 on stdout/stderr so structlog tracebacks can be printed.
+
+    structlog renders exceptions with Unicode box-drawing characters. On a
+    Windows cp1252 console the print inside ``logger.exception`` raises
+    :class:`UnicodeEncodeError`, which turns a *logged* error into a
+    *crash*. Called by ``tests/conftest.py`` and by the module selftests
+    that exercise error paths.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+        except (AttributeError, ValueError):
+            pass
+
+
 __all__ = [
     "RedactionFilter",
     "bind_correlation_id",
     "clear_correlation_id",
+    "configure_console_encoding",
     "configure_logging",
     "get_correlation_id",
     "get_logger",

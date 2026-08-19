@@ -58,10 +58,10 @@ If Ollama or vector search is unavailable, the system MUST skip semantic and hyb
 
 ### Requirement: Grounded Multilingual Generation
 
-Gemini 2.5 Flash SHALL generate answers only from authorized retrieved evidence. The answer MUST use the language detected from the student's question and MUST NOT expose credentials, raw authorization data, or identifiable peer data.
+MiniMax-M3 (Anthropic-compatible endpoint) SHALL generate answers only from authorized retrieved evidence. The answer MUST use the language detected from the student's question and MUST NOT expose credentials, raw authorization data, or identifiable peer data.
 
 #### Scenario: Evidence is insufficient
 
 - GIVEN authorized retrieval cannot support the requested answer
-- WHEN Gemini generates the response
+- WHEN MiniMax generates the response
 - THEN it MUST state that the available data is insufficient in the detected question language

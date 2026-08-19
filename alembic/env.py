@@ -21,6 +21,7 @@ import os
 import selectors
 from logging.config import fileConfig
 from typing import Any
+from dotenv import load_dotenv
 
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
@@ -35,6 +36,7 @@ config = context.config
 
 # Inject SUPABASE_DATABASE_URL (and a sensible async psycopg default) into
 # the Alembic config so ``alembic current`` works without a manual override.
+load_dotenv()  # Load .env variables if present
 database_url = os.environ.get("SUPABASE_DATABASE_URL")
 if database_url:
     config.set_main_option("sqlalchemy.url", database_url)

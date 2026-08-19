@@ -288,6 +288,9 @@ class Course(TenantMixin, Base):
     time_zone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     enrollments_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     calendar_ics: Mapped[str | None] = mapped_column(Text, nullable=True)
+    term_name: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, index=True
+    )
 
 
 class Enrollment(TenantMixin, Base):
@@ -479,6 +482,15 @@ __all__ = [
     "Assignment",
     "Base",
     "CanvasCredential",
+    "CanvasMockAssignment",
+    "CanvasMockAttendanceRecord",
+    "CanvasMockClassSession",
+    "CanvasMockCourse",
+    "CanvasMockEnrollment",
+    "CanvasMockGrade",
+    "CanvasMockUser",
+    "CanvasMockWebhookEvent",
+    "CanvasMockWebhookSubscription",
     "Course",
     "Enrollment",
     "JSONType",
@@ -488,3 +500,19 @@ __all__ = [
     "TenantMixin",
     "User",
 ]
+
+# Re-export the canvas_mock_* models so callers can ``from app.models
+# import CanvasMockCourse`` without an extra import path. The import is
+# placed after __all__ so the names are part of the public surface even
+# if the package is imported for ``dir()``-style introspection.
+from app.models.canvas_mock import (
+    CanvasMockAssignment,
+    CanvasMockAttendanceRecord,
+    CanvasMockClassSession,
+    CanvasMockCourse,
+    CanvasMockEnrollment,
+    CanvasMockGrade,
+    CanvasMockUser,
+    CanvasMockWebhookEvent,
+    CanvasMockWebhookSubscription,
+)

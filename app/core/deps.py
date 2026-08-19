@@ -17,13 +17,19 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
+from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
+from app.core.db import get_db_session
 from app.security.backend_auth import InvalidToken, verify_backend_jwt
 from app.security.token_crypto import InvalidToken as CanvasTokenInvalid
+from app.security.token_crypto import TokenCipher
 from app.services.tenant_service import (
     TenantNotFound,
+    TenantService,
     get_tenant_service,
+    should_use_session_store,
 )
 
 
@@ -59,11 +65,29 @@ def verify_backend_jwt_dependency(
         ) from exc
 
 
+def _tenant_service_for_request(
+    request: Request,
+    session: Session,
+    settings: Settings,
+) -> TenantService:
+    """Use persisted credentials in the canonical app, with legacy fallback."""
+    if should_use_session_store(request.app.state, session):
+        cipher = TokenCipher(settings.tenant_token_key)
+        return TenantService(
+            ciphers={cipher.key_version: cipher},
+            session=session,
+        )
+    return get_tenant_service()
+
+
 def require_tenant(
+    request: Request,
     user_id: Annotated[str, Depends(verify_backend_jwt_dependency)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[Session, Depends(get_db_session)],
 ) -> UUID:
-    """FastAPI dependency: resolve (or create) the tenant for ``user_id``."""
-    service = get_tenant_service()
+    """FastAPI dependency: resolve the persisted tenant for ``user_id``."""
+    service = _tenant_service_for_request(request, session, settings)
     try:
         record = service.get_or_create_tenant(user_id)
     except TenantNotFound as exc:  # pragma: no cover - defensive
@@ -75,7 +99,10 @@ def require_tenant(
 
 
 def require_tenant_token(
+    request: Request,
     tenant_id: Annotated[UUID, Depends(require_tenant)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[Session, Depends(get_db_session)],
 ) -> tuple[UUID, str]:
     """FastAPI dependency: decrypt the Canvas token for the tenant.
 
@@ -83,7 +110,7 @@ def require_tenant_token(
     held only in the request scope; callers MUST NOT persist or echo
     it back to a client response.
     """
-    service = get_tenant_service()
+    service = _tenant_service_for_request(request, session, settings)
     try:
         plaintext = service.get_decrypted_canvas_token(tenant_id)
     except (TenantNotFound, CanvasTokenInvalid, UnicodeError) as exc:
@@ -94,8 +121,40 @@ def require_tenant_token(
     return tenant_id, plaintext
 
 
+def require_tenant_mock(
+    request: Request,
+    tenant_id: Annotated[UUID, Depends(require_tenant)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[Session, Depends(get_db_session)],
+) -> tuple[UUID, str]:
+    """FastAPI dependency: resolve the canvas-mock prefix for the tenant.
+
+    Mirror of :func:`require_tenant_token` for the canvas-mock flow.
+    The full API key is never persisted (the connect controller only
+    stores its first 8 characters, see
+    :mod:`app.controllers.auth_canvas_mock`); the dependency returns
+    ``(tenant_id, api_key_prefix)`` so the request handler can
+    validate the tenant has registered a mock key without ever
+    needing the raw secret.
+
+    Returns 403 when no ``canvas_mock_users`` row exists for the
+    tenant, mirroring the legacy dep's behaviour for missing
+    credentials. The JWT step is unchanged.
+    """
+    service = _tenant_service_for_request(request, session, settings)
+    try:
+        prefix = service.get_mock_api_key_prefix(tenant_id)
+    except TenantNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="no Canvas-mock credentials for tenant",
+        ) from exc
+    return tenant_id, prefix
+
+
 __all__ = [
     "require_tenant",
+    "require_tenant_mock",
     "require_tenant_token",
     "verify_backend_jwt_dependency",
 ]

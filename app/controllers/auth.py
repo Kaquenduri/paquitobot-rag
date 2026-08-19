@@ -1,48 +1,68 @@
-"""``POST /auth/canvas/connect`` controller (PR 2 task 2.6).
+"""Persistent ``POST /auth/canvas/connect`` controller.
 
-Flow (design §12.1, §12.7):
+The controller validates the supplied Canvas token with ``GET /users/self``
+before any database write.  Accepted tokens are encrypted with
+:class:`~app.security.token_crypto.TokenCipher` and persisted through a
+request-scoped SQLAlchemy :class:`~sqlalchemy.orm.Session`; plaintext exists
+only for the outbound probe and encryption call.
 
-1. Verify the backend JWT.
-2. Get-or-create the tenant for the JWT ``sub`` claim.
-3. Probe Canvas ``GET /users/self`` with the plaintext token
-   (held in memory only for this request).
-4. On success: encrypt the token, persist it, return ``204 No Content``.
-5. On Canvas rejection: 401 with ``code: "canvas_token_invalid"``.
-   The error body is scrubbed so neither the ``Authorization`` header
-   nor the plaintext token ever reaches the wire or a log line.
-
-The router is registered here but is NOT wired into ``app.main`` —
-``app.main`` is intentionally untouched in PR 2 (see
-``apply-progress.md``). Tests mount the router via
-``fastapi.testclient.TestClient`` on a dedicated app fixture.
+Standalone router harnesses from PR 2/3 retain the explicit in-memory
+compatibility mode.  The canonical ``app.main`` application opts into the
+SQLAlchemy store through app state, and SQLite-backed harnesses opt in
+automatically.
 """
 
 from __future__ import annotations
 
-import logging
 from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import JSONResponse
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token as google_id_token
+from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
+from app.core.db import get_db_session
 from app.core.deps import verify_backend_jwt_dependency
 from app.core.errors import new_correlation_id
-from app.core.logging import get_logger
+from app.core.logging import get_correlation_id, get_logger
+from app.schemas.auth import LoginRequest, LoginResponse
 from app.schemas.errors import ErrorBody
+from app.security.backend_auth import issue_backend_jwt
 from app.security.token_crypto import TokenCipher
-from app.services.tenant_service import get_tenant_service
+from app.services.tenant_service import (
+    TenantService,
+    get_tenant_service,
+    should_use_session_store,
+)
 
-logger = logging.getLogger("app.controllers.auth")
-
-router = APIRouter(prefix="/auth/canvas", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-async def _probe_canvas(canvas_token: str, settings: Settings) -> httpx.Response:
-    """Probe Canvas ``GET /users/self`` with the plaintext token."""
+def get_canvas_probe_transport() -> httpx.AsyncBaseTransport | None:
+    """Return an optional HTTPX transport; production uses the real transport."""
+    return None
+
+
+async def _probe_canvas(
+    canvas_token: str,
+    settings: Settings,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> httpx.Response:
+    """Probe Canvas ``GET /users/self`` with the transient plaintext token."""
     probe_url = settings.canvas_api_base_url.rstrip("/") + "/users/self"
-    async with httpx.AsyncClient(timeout=8.0) as client:
+    async with httpx.AsyncClient(timeout=8.0, transport=transport) as client:
         return await client.get(
             probe_url,
             headers={"Authorization": f"Bearer {canvas_token}"},
@@ -50,15 +70,14 @@ async def _probe_canvas(canvas_token: str, settings: Settings) -> httpx.Response
 
 
 def _canvas_invalid_response() -> JSONResponse:
-    """Build the 401 response that the design §12.7 prescribes."""
-    correlation_id = new_correlation_id()
+    """Build the secret-safe 401 response prescribed by design section 12.7."""
+    correlation_id = get_correlation_id() or new_correlation_id()
     body = ErrorBody(
         code="canvas_token_invalid",
         message="Canvas rejected the token",
         correlation_id=correlation_id,
     )
-    log = get_logger("app.controllers.auth")
-    log.warning(
+    get_logger("app.controllers.auth").warning(
         "canvas_token_invalid",
         correlation_id=correlation_id,
     )
@@ -71,50 +90,269 @@ def _canvas_invalid_response() -> JSONResponse:
     return response
 
 
+def _tenant_service_for_request(
+    request: Request,
+    session: Session,
+    cipher: TokenCipher,
+) -> TenantService:
+    """Resolve the canonical SQL store or the explicit legacy memory store."""
+    if should_use_session_store(request.app.state, session):
+        return TenantService(
+            ciphers={cipher.key_version: cipher},
+            session=session,
+        )
+    service = get_tenant_service()
+    service.bind_cipher(cipher.key_version, cipher)
+    return service
+
+
 @router.post(
-    "/connect",
+    "/canvas/connect",
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
 )
 async def connect_canvas(
+    request: Request,
     canvas_token: Annotated[str, Header(alias="X-Canvas-Token")],
     user_id: Annotated[str, Depends(verify_backend_jwt_dependency)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    session: Annotated[Session, Depends(get_db_session)],
+    probe_transport: Annotated[
+        httpx.AsyncBaseTransport | None,
+        Depends(get_canvas_probe_transport),
+    ],
 ) -> Response:
-    """Connect (or rotate) the caller's Canvas token."""
+    """Validate, encrypt, and durably associate a Canvas token to the caller."""
     if not canvas_token:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="missing X-Canvas-Token header",
         )
 
-    settings: Settings = get_settings()
-    service = get_tenant_service()
-    tenant = service.get_or_create_tenant(user_id)
-    cipher = TokenCipher(settings.tenant_token_key)
-
     try:
-        response = await _probe_canvas(canvas_token, settings)
+        if probe_transport is None:
+            # Preserve the two-argument seam used by the original PR 2 smoke
+            # tests while production still follows the normal HTTPX transport.
+            response = await _probe_canvas(canvas_token, settings)
+        else:
+            response = await _probe_canvas(
+                canvas_token,
+                settings,
+                transport=probe_transport,
+            )
     except httpx.HTTPError as exc:
         get_logger("app.controllers.auth").warning(
             "canvas_probe_failed",
-            tenant_id=str(tenant.id),
             error_class=exc.__class__.__name__,
         )
         return _canvas_invalid_response()
 
-    if response.status_code == 401:
+    if response.status_code == status.HTTP_401_UNAUTHORIZED:
         return _canvas_invalid_response()
-    if response.status_code >= 500:
+    if response.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="canvas_unavailable",
         )
-    if response.status_code >= 400:
+    if response.status_code >= status.HTTP_400_BAD_REQUEST:
         return _canvas_invalid_response()
 
-    # Persist the encrypted token (idempotent on tenant_id).
-    service.store_canvas_token(tenant.id, canvas_token, cipher)
+    # The repository receives ciphertext only, and no durable write occurs
+    # until the Canvas probe has accepted the token.
+    cipher = TokenCipher(settings.tenant_token_key)
+    envelope = cipher.encrypt(canvas_token)
+    service = _tenant_service_for_request(request, session, cipher)
+    tenant = service.get_or_create_tenant(user_id)
+    persisted = service.store_canvas_token(
+        tenant.id,
+        encrypted_ciphertext=envelope.ciphertext,
+        key_version=envelope.key_version,
+    )
+    if persisted is False:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="tenant_persistence_failed",
+        )
+    if not service._memory_store:
+        session.commit()
+
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post(
+    "/login",
+    response_model=LoginResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def login_with_google(
+    body: LoginRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> LoginResponse:
+    """Verify a Google Sign-In ``id_token`` and mint a backend JWT.
+
+    The mobile client obtains the ``id_token`` via the GoogleSignIn SDK
+    and posts it here. PaquitoBot never initiates the OAuth redirect:
+    that is the client's responsibility. We only verify the token
+    against Google's public keys and, on success, sign a backend JWT
+    keyed by ``BACKEND_SECRET`` with ``sub`` set to the Google account
+    identifier (``sub`` is stable per Google account across logins).
+
+    The endpoint is intentionally short — no session row, no audit
+    log beyond a structured event — so it can be retired cleanly when
+    the real auth provider lands. The ``GET /auth/canvas/connect``
+    flow, which derives ``tenant_id`` from the resulting JWT, is
+    unchanged.
+    """
+    try:
+        id_info = google_id_token.verify_oauth2_token(
+            body.id_token,
+            google_requests.Request(),
+            audience=settings.google_client_id,
+        )
+    except ValueError as exc:
+        get_logger("app.controllers.auth").warning(
+            "login_invalid_id_token",
+            error_class=exc.__class__.__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid id_token",
+        ) from exc
+
+    if not isinstance(id_info, dict):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid id_token payload",
+        )
+    sub = id_info.get("sub")
+    if not isinstance(sub, str) or not sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="id_token missing sub",
+        )
+    email_raw = id_info.get("email")
+    email: str | None = email_raw if isinstance(email_raw, str) and email_raw else None
+
+    token, ttl = issue_backend_jwt(sub, settings=settings)
+    get_logger("app.controllers.auth").info(
+        "login_issued",
+        sub=sub,
+        has_email=bool(email),
+        expires_in=ttl,
+    )
+    return LoginResponse(access_token=token, expires_in=ttl, sub=sub, email=email)
+
+
 __all__ = ["router"]
+
+
+def _selftest() -> None:
+    """Prove the HTTP route writes encrypted credentials using only local fakes."""
+    from collections.abc import Generator
+
+    from cryptography.fernet import Fernet
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sqlalchemy import select
+
+    from app.core.db import engine_for_url, session_factory_for
+    from app.middleware.correlation_id import CorrelationIdMiddleware
+    from app.models import Base, CanvasCredential, Tenant
+    from app.security.token_crypto import EncryptedToken
+    from app.services.tenant_service import SESSION_STORE_STATE_FLAG
+
+    plaintext = "selftest-canvas-token"
+    fernet_key = Fernet.generate_key().decode("ascii")
+    settings = Settings(
+        supabase_database_url="postgresql+psycopg://127.0.0.1:1/selftest",
+        tenant_token_key=fernet_key,
+        backend_secret="selftest-backend-secret-with-sufficient-length",
+        minimax_api_key="selftest-minimax-placeholder",
+        ollama_host="http://127.0.0.1:1",
+        canvas_api_base_url="https://canvas.invalid/api/v1",
+        google_client_id="selftest.apps.googleusercontent.com",
+        scheduler_enabled=False,
+    )
+    engine = engine_for_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = session_factory_for(engine)
+
+    def override_session() -> Generator[Session]:
+        with factory() as db_session:
+            yield db_session
+
+    def canvas_handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/api/v1/users/self"
+        authorization = request.headers["Authorization"]
+        if authorization == "Bearer selftest-rejected-token":
+            return httpx.Response(401, json={"error": "unauthorized"})
+        assert authorization == f"Bearer {plaintext}"
+        return httpx.Response(200, json={"id": 42})
+
+    transport = httpx.MockTransport(canvas_handler)
+    app = FastAPI()
+    setattr(app.state, SESSION_STORE_STATE_FLAG, True)
+    app.add_middleware(CorrelationIdMiddleware)
+    app.include_router(router)
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[verify_backend_jwt_dependency] = lambda: "selftest-user"
+    app.dependency_overrides[get_canvas_probe_transport] = lambda: transport
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/auth/canvas/connect",
+                headers={
+                    "Authorization": "Bearer selftest-backend-token",
+                    "X-Canvas-Token": plaintext,
+                },
+            )
+            rejected = client.post(
+                "/auth/canvas/connect",
+                headers={
+                    "Authorization": "Bearer selftest-backend-token",
+                    "X-Canvas-Token": "selftest-rejected-token",
+                },
+            )
+        assert response.status_code == status.HTTP_204_NO_CONTENT, response.text
+        assert rejected.status_code == status.HTTP_401_UNAUTHORIZED
+        assert rejected.json()["code"] == "canvas_token_invalid"
+        assert "selftest-rejected-token" not in rejected.text
+
+        with factory() as verification_session:
+            tenant = verification_session.execute(
+                select(Tenant).where(Tenant.backend_user_id == "selftest-user")
+            ).scalar_one()
+            credential = verification_session.execute(
+                select(CanvasCredential).where(
+                    CanvasCredential.tenant_id == tenant.id
+                )
+            ).scalar_one()
+            assert credential.key_version == TokenCipher.CURRENT_KEY_VERSION
+            assert isinstance(credential.ciphertext, bytes)
+            assert plaintext.encode("utf-8") not in credential.ciphertext
+            assert (
+                TokenCipher(fernet_key).decrypt(
+                    EncryptedToken(
+                        ciphertext=credential.ciphertext,
+                        key_version=credential.key_version,
+                    )
+                )
+                == plaintext
+            )
+            persisted_service = TenantService(
+                ciphers={
+                    TokenCipher.CURRENT_KEY_VERSION: TokenCipher(fernet_key),
+                },
+                session=verification_session,
+            )
+            assert persisted_service.get_decrypted_canvas_token(tenant.id) == plaintext
+    finally:
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
+if __name__ == "__main__":  # pragma: no cover - manual executable assertion
+    _selftest()

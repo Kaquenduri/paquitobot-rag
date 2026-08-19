@@ -8,14 +8,14 @@ Define how Canvas academic content becomes tenant-scoped, retrieval-ready docume
 
 ### Requirement: Academic Content Preparation
 
-The system MUST convert supported Canvas course, assignment, and own-submission content into normalized documents. Canvas-originated HTML MUST be sanitized before downstream processing, and unsupported or empty content MAY be omitted.
+The system MUST convert only the authenticated student's supported Canvas course, assignment, and own-submission content into normalized documents. Assignment `description` and own-submission `body` MUST be sanitized before chunking and before embedding. Unsafe markup, executable content, credential fragments, and identifiable peer data MUST NOT enter retrieval documents; unsupported or empty content MAY be omitted.
 
 #### Scenario: Sanitize Canvas HTML
 
-- GIVEN an assignment contains HTML markup and executable content
-- WHEN the assignment is prepared for retrieval
-- THEN the system MUST retain safe readable text
-- AND it MUST remove executable or unsafe markup
+- GIVEN an assignment `description` or own-submission `body` contains HTML and executable content
+- WHEN the source is prepared for retrieval
+- THEN the system MUST retain only safe readable text
+- AND unsafe markup MUST NOT reach chunking or embedding
 
 #### Scenario: Omit empty content
 
@@ -40,3 +40,13 @@ Every ingested document MUST carry server-assigned `tenant_id`, source type, and
 - GIVEN an authenticated student's own source record
 - WHEN the record is ingested
 - THEN every resulting document and chunk MUST retain that student's server-assigned tenant scope
+
+### Requirement: FastAPI Dependency Declaration
+
+The backend dependency manifest MUST declare FastAPI so the ingestion, sync, and query HTTP service can be installed reproducibly from `requirements.txt`.
+
+#### Scenario: Install declared backend dependencies
+
+- GIVEN a clean supported Python environment
+- WHEN dependencies from `requirements.txt` are installed
+- THEN FastAPI MUST be available to the backend runtime

@@ -20,8 +20,9 @@ from __future__ import annotations
 
 import os
 from collections.abc import Generator
-from typing import Any
+from typing import Annotated, Any
 
+from fastapi import Depends, Request
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -117,25 +118,35 @@ def make_engine_from_settings(
     return engine_for_url(url)
 
 
+def _get_override_engine() -> Engine | None:
+    """FastAPI seam for tests that override the request engine dependency."""
+    return None
+
+
 def get_db_session(
-    settings: Settings | None = None,
+    settings: Annotated[Settings | None, Depends(get_settings)] = None,
     *,
-    override_engine: Engine | None = None,
+    request: Request = None,
+    override_engine: Annotated[Engine | None, Depends(_get_override_engine)] = None,
 ) -> Generator[Session]:
-    """FastAPI dependency: yield a :class:`Session`, rollback on error.
+    """FastAPI dependency: yield one request-scoped SQLAlchemy session.
 
-    Production wires this into controllers via ``Depends(get_db_session)``.
-    Tests pass ``override_engine`` to inject a SQLite engine without
-    touching ``SUPABASE_DATABASE_URL``. The session is closed in the
-    ``finally`` block regardless of outcome.
-
-    The lifespan keeps the engine on ``app.state.engine``; the
-    dependency binds a fresh :class:`sessionmaker` per request so
-    long-running async loops do not share a connection.
+    FastAPI injects ``settings`` and caches this yield dependency once per
+    request.  A lifespan-owned engine on ``app.state.engine`` is reused when
+    available; otherwise this dependency owns and disposes a short-lived
+    engine.  Direct callers may still pass ``settings`` or ``override_engine``
+    explicitly, preserving the existing SQLite test seam.
     """
-    if override_engine is None:
-        override_engine = make_engine_from_settings(settings)
-    factory = session_factory_for(override_engine)
+    app_engine = None
+    if request is not None:
+        app_engine = getattr(request.app.state, "engine", None)
+
+    engine = override_engine or app_engine
+    owns_engine = engine is None
+    if engine is None:
+        engine = make_engine_from_settings(settings)
+
+    factory = session_factory_for(engine)
     session = factory()
     try:
         yield session
@@ -144,6 +155,8 @@ def get_db_session(
         raise
     finally:
         session.close()
+        if owns_engine:
+            engine.dispose()
 
 
 def create_all(engine: Engine) -> None:

@@ -29,7 +29,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import Settings, get_settings
@@ -90,15 +90,23 @@ class QueryResponse(BaseModel):
 
 
 def get_rag_service(
+    request: Request,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> RAGService:
     """Return a :class:`RAGService` built from the current settings.
 
     Tests override this dependency to inject a stub RAG service that
-    returns deterministic answers; the production path returns a
-    fresh instance per request (the service itself is stateless).
+    returns deterministic answers; the production path returns the
+    service instantiated once in the lifespan and stashed on
+    ``app.state``.  When the lifespan hasn't wired one (standalone
+    harnesses) we fall back to a fresh ``RAGService()`` with no
+    dependencies so the controller still returns a bounded refusal
+    rather than an empty answer.
     """
     _ = settings  # placeholder for future wiring (e.g. provider URL)
+    runtime_service = getattr(request.app.state, "rag_service", None)
+    if runtime_service is not None:
+        return runtime_service
     return RAGService()
 
 
@@ -229,7 +237,7 @@ def _selftest() -> None:
         os.environ["SUPABASE_DATABASE_URL"] = (
             "postgresql+psycopg://127.0.0.1:1/primer_rag_test"
         )
-        os.environ["GEMINI_API_KEY"] = "test-only-gemini"
+        os.environ["MINIMAX_API_KEY"] = "test-only-minimax"
         os.environ["OLLAMA_HOST"] = "http://127.0.0.1:1"
         os.environ["CANVAS_API_BASE_URL"] = "https://canvas.invalid/api/v1"
         get_settings.cache_clear()

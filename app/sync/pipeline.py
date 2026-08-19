@@ -446,7 +446,11 @@ async def _sync_favorite_courses(
 ) -> tuple[list[int], int]:
     course_ids: list[int] = []
     embedded_enrollments = 0
-    params = _updated_after_params(updated_after)
+    # Always request ``include[]=term`` so the persisted ``term_name`` stays
+    # current even when the watermark narrows the page; ``updated_after``
+    # keeps the delta cursor working as before.
+    params: dict[str, Any] = {"include[]": "term"}
+    params.update(_updated_after_params(updated_after))
 
     async for item in _paginate_items(
         client,
@@ -667,10 +671,21 @@ def _normalize_assignment_nested(payload: dict[str, Any]) -> dict[str, Any]:
         if value is None:
             continue
         if not isinstance(value, dict):
+            logger.warning(
+                "sync_nested_not_object",
+                assignment_field=key,
+                received_type=type(value).__name__,
+            )
             raise CanvasSchemaDriftError(f"assignment field {key!r} must be an object")
         try:
             nested = model.model_validate(value)
         except ValidationError as exc:
+            logger.warning(
+                "sync_nested_drift",
+                assignment_field=key,
+                exc_type=exc.__class__.__name__,
+                error=str(exc)[:500],
+            )
             raise CanvasSchemaDriftError(
                 f"assignment field {key!r} failed DTO validation"
             ) from exc
@@ -826,6 +841,21 @@ def _parse(model: type[Any], payload: dict[str, Any], path: str) -> Any:
     try:
         return parse_dto(model, payload)
     except (ValidationError, TypeError, ValueError) as exc:
+        # Surface the exact field that failed so the next sync_starts
+        # log entry points at the offending Canvas key rather than a
+        # generic "mismatch at /path" message.
+        error_fields: list[tuple[str, ...]] = []
+        if hasattr(exc, "errors"):
+            for err in exc.errors():
+                if isinstance(err, dict) and "loc" in err:
+                    error_fields.append(tuple(str(part) for part in err["loc"]))
+        logger.warning(
+            "sync_schema_drift_detail",
+            path=path,
+            exc_type=exc.__class__.__name__,
+            error=str(exc)[:500],
+            fields=error_fields or None,
+        )
         raise CanvasSchemaDriftError(f"Canvas DTO mismatch at {path}") from exc
 
 

@@ -1,0 +1,9 @@
+{
+  "id": 101,
+  "name": "Cálculo I",
+  "course_code": "CALC-1",
+  "workflow_state": "available",
+  "start_at": "2026-03-01T00:00:00Z",
+  "end_at": "2026-07-15T00:00:00Z",
+  "enrollments_count": 30
+}

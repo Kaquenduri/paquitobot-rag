@@ -1,4 +1,4 @@
-"""``GET /healthz`` controller (PR 6 task 6.2).
+"""``GET`` / ``HEAD`` ``/healthz`` controller (PR 6 task 6.2).
 
 The endpoint reports the live status of every dependency the
 service needs to serve traffic:
@@ -20,6 +20,11 @@ When :attr:`Settings.disable_rag_routes` is on the endpoint stays
 ``200`` so a Kubernetes probe does not cycle the pod just because
 the operator flipped a feature flag — but the body adds an
 ``rag_routes_disabled`` flag.
+
+Both ``GET`` and ``HEAD`` are wired through the same handler so
+Kubernetes probes and HTTP load balancers that default to ``HEAD``
+get a real status check (Starlette strips the response body for
+``HEAD`` automatically).
 """
 
 from __future__ import annotations
@@ -102,9 +107,16 @@ def _probe_scheduler(request: Request) -> dict[str, Any]:
     return {"running": running, "enabled": True}
 
 
-@router.get("/healthz")
+@router.api_route("/healthz", methods=["GET", "HEAD"])
 async def healthz(request: Request) -> dict[str, Any]:
     """Return the full service health report.
+
+    Both ``GET`` and ``HEAD`` are accepted so Kubernetes liveness/readiness
+    probes and HTTP load balancers that default to ``HEAD`` (e.g. some
+    reverse-proxy health checks) get a real status without paying for the
+    response body — Starlette strips the body for ``HEAD`` automatically.
+    The handler still runs all dependency probes so a ``HEAD`` request
+    reflects the same liveness state as a ``GET``.
 
     The response shape is::
 
@@ -156,7 +168,7 @@ def _selftest() -> None:
     os.environ.setdefault("SUPABASE_DATABASE_URL", "postgresql+psycopg://127.0.0.1:1/test")
     os.environ.setdefault("TENANT_TOKEN_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
     os.environ.setdefault("BACKEND_SECRET", "test-only-secret")
-    os.environ.setdefault("GEMINI_API_KEY", "test")
+    os.environ.setdefault("MINIMAX_API_KEY", "test")
     os.environ.setdefault("OLLAMA_HOST", "http://127.0.0.1:1")
     os.environ.setdefault("CANVAS_API_BASE_URL", "https://canvas.invalid/api/v1")
 

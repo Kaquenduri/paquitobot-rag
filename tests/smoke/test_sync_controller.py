@@ -41,7 +41,6 @@ from app.services.tenant_service import (
 from app.sync import lock as sync_lock
 from app.sync.pipeline import SyncResult
 
-
 TENANT_ID = uuid.UUID("11111111-2222-3333-4444-555555555555")
 
 
@@ -86,8 +85,9 @@ def _build_app(
     # SQLite engine instead of trying to connect to a real Postgres.
     from collections.abc import Generator
 
-    from app.core.db import engine_for_url, session_factory_for
     from sqlalchemy.orm import Session
+
+    from app.core.db import engine_for_url, session_factory_for
 
     test_engine = engine_for_url("sqlite:///:memory:")
     from app.models import Base
@@ -124,9 +124,14 @@ def _make_settings(**overrides: Any) -> Settings:
         "supabase_database_url": "postgresql+psycopg://127.0.0.1:1/test",
         "tenant_token_key": Fernet.generate_key().decode("ascii"),
         "backend_secret": secrets.token_urlsafe(32),
-        "gemini_api_key": "test",
+        "minimax_api_key": "test",
         "ollama_host": "http://127.0.0.1:1",
         "canvas_api_base_url": "https://canvas.test/api/v1",
+        "google_client_id": "test-only.apps.googleusercontent.com",
+        "canvas_mock_webhook_secret": "test-only-canvas-mock-webhook-secret",
+        "canvas_mock_api_base_url": "https://canvas-mock.invalid/api/v1",
+        "canvas_mock_api_key": "adm_test_key",
+        "canvas_mock_jwt_secret": "test-only-canvas-mock-jwt-secret",
         "manual_sync_min_interval_seconds": 60,
     }
     base.update(overrides)

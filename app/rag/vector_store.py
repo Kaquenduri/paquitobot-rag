@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from typing import Any
+
+_HEALTH_TTL_SECONDS = 30  # re-probe Ollama at most once per 30 s
 
 
 class VectorStore:
@@ -11,16 +14,25 @@ class VectorStore:
         self._store = store
         self._embedder = embedder
         self._last_health = False
+        self._last_probe_ts: float = 0.0  # epoch seconds of the last probe
         self._hashes: dict[tuple[str, str], Any] = {}
 
     def provider_health(self) -> bool:
+        now = time.monotonic()
+        # Skip the network round-trip if we probed recently.
+        if now - self._last_probe_ts < _HEALTH_TTL_SECONDS:
+            return self._last_health
+        self._last_probe_ts = now
         try:
             if self._embedder is None:
                 self._last_health = False
             else:
                 probe = getattr(self._embedder, "embed_query", None)
+                # Catch *all* exceptions: httpx.ReadTimeout, ConnectionError,
+                # RuntimeError, etc. so a missing Ollama never crashes the
+                # request — it just marks the provider as unavailable.
                 self._last_health = bool(callable(probe) and probe("health probe"))
-        except (RuntimeError, ValueError, OSError):
+        except Exception:  # noqa: BLE001
             self._last_health = False
         return self._last_health
 
@@ -33,7 +45,17 @@ class VectorStore:
         filters["tenant_id"] = str(tenant_id)
         if self._store is None:
             return []
-        return self._store.similarity_search(query, k=k, filter=filters, **kwargs)
+        # ``store.similarity_search`` may return either ``Document`` objects
+        # or ``(Document, score)`` tuples depending on the backend.  Always
+        # normalise to ``Document`` so callers can rely on ``page_content``.
+        raw = self._store.similarity_search(query, k=k, filter=filters, **kwargs)
+        normalised = []
+        for item in raw:
+            if isinstance(item, tuple) and len(item) >= 1:
+                normalised.append(item[0])
+            else:
+                normalised.append(item)
+        return normalised
 
     def upsert(self, documents, *, tenant_id):
         if self._store is None:
@@ -64,9 +86,17 @@ PGVectorStore = VectorStore
 def _selftest() -> None:
     class Stub:
         def embed_query(self, value): return [1.0]
-        def similarity_search(self, query, **kwargs): return kwargs
+        def similarity_search(self, query, **kwargs):
+            from types import SimpleNamespace
+
+            return [
+                SimpleNamespace(page_content="hola", metadata=kwargs.get("filter", {})),
+            ]
     store = VectorStore(Stub(), embedder=Stub())
-    assert store.similarity_search("q", tenant_id="t")["filter"]["tenant_id"] == "t"
+    docs = store.similarity_search("q", tenant_id="t")
+    assert len(docs) == 1
+    assert docs[0].page_content == "hola"
+    assert docs[0].metadata["tenant_id"] == "t"
 
 
 if __name__ == "__main__":

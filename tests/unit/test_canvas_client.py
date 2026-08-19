@@ -14,7 +14,6 @@ Coverage:
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
 
 import httpx
 import pytest
@@ -24,7 +23,6 @@ from app.canvas.client import (
     CanvasMethodRejected,
     CanvasRequestError,
 )
-
 
 # ---------------------------------------------------------------------------
 # Method rejection (FAIL FAST, no network)

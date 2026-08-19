@@ -17,6 +17,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
@@ -52,28 +53,48 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     scheduler = None
     engine = None
-    if settings.scheduler_enabled:
+    rag_service = None
+    if settings.scheduler_enabled or not settings.disable_rag_routes:
         # PR 4 starts only the sync scheduler here.
         from app.core.db import make_engine_from_settings, session_factory_for
+        from app.services.canvas_service import CanvasService
+        from app.services.rag_factory import build_rag_service
         from app.services.tenant_service import get_tenant_service
         from app.sync.scheduler import SyncScheduler
 
         engine = make_engine_from_settings(settings)
-        scheduler = SyncScheduler(
-            settings,
-            session_factory=session_factory_for(engine),
-            tenant_service=get_tenant_service(),
-        )
-        scheduler.start()
-        app.state.sync_scheduler = scheduler
-        app.state.sync_engine = engine
-        app.state.scheduler = scheduler
-        app.state.engine = engine
+        session_factory = session_factory_for(engine)
+        tenant_service = get_tenant_service()
+        rag_service = build_rag_service(settings, session_factory)
+        app.state.rag_service = rag_service
+
+        if settings.scheduler_enabled:
+            scheduler = SyncScheduler(
+                settings,
+                session_factory=session_factory,
+                tenant_service=tenant_service,
+                sync_service=CanvasService(
+                    settings=settings,
+                    tenant_service=tenant_service,
+                    session_factory=session_factory,
+                ),
+            )
+            scheduler.start()
+            app.state.sync_scheduler = scheduler
+            app.state.sync_engine = engine
+            app.state.scheduler = scheduler
+            app.state.engine = engine
+        else:
+            app.state.sync_scheduler = None
+            app.state.sync_engine = engine
+            app.state.scheduler = None
+            app.state.engine = engine
     else:
         app.state.sync_scheduler = None
         app.state.sync_engine = None
         app.state.scheduler = None
         app.state.engine = None
+        app.state.rag_service = None
 
     try:
         yield
@@ -83,6 +104,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if engine is not None:
             engine.dispose()
         shutdown_tracing(tracer_provider)
+        app.state.rag_service = None
         log.info("app_stopped")
 
 
@@ -106,19 +128,56 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json",
     )
 
+    from app.services.tenant_service import SESSION_STORE_STATE_FLAG
+
+    # Canonical application requests must use durable SQLAlchemy tenant
+    # storage.  Standalone PR 2/3 router harnesses omit this explicit marker
+    # and retain their in-memory compatibility path.
+    setattr(app.state, SESSION_STORE_STATE_FLAG, True)
+
     register_exception_handlers(app)
     app.add_middleware(CorrelationIdMiddleware)
 
+    # CORS: web frontends (e.g. a local dev dashboard on :3000) need
+    # this to call the API; native mobile clients do not. The empty
+    # list disables CORS entirely. We read settings via the cached
+    # ``get_settings()`` so it works in tests that call ``create_app``
+    # directly without the lifespan.
+    startup_settings = get_settings()
+    if startup_settings.cors_allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=startup_settings.cors_allowed_origins,
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "X-Correlation-ID"],
+            expose_headers=["X-Correlation-ID"],
+        )
+        from app.core.logging import get_logger
+
+        get_logger("app.boot").info(
+            "cors_configured",
+            allowed_origins=startup_settings.cors_allowed_origins,
+        )
+
     # Mount every controller (PR 6 task 6.7).
     from app.controllers.auth import router as auth_router
+    from app.controllers.auth_canvas_mock import router as auth_canvas_mock_router
+    from app.controllers.canvas_mock_webhooks import router as canvas_mock_webhooks_router
     from app.controllers.health import router as health_router
     from app.controllers.query import router as query_router
+    from app.controllers.query_mock import router as query_mock_router
     from app.controllers.sync import router as sync_router
+    from app.controllers.sync_mock import router as sync_mock_router
 
     app.include_router(auth_router)
+    app.include_router(auth_canvas_mock_router)
     app.include_router(query_router)
+    app.include_router(query_mock_router)
     app.include_router(sync_router)
+    app.include_router(sync_mock_router)
     app.include_router(health_router)
+    app.include_router(canvas_mock_webhooks_router)
 
     return app
 

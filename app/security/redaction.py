@@ -11,7 +11,7 @@ Coverage:
 - Dict keys (case-insensitive): ``authorization``, ``token``,
   ``ciphertext``, ``password``, ``database_url``,
   ``supabase_database_url``, ``tenant_token_key``, ``backend_secret``,
-  ``gemini_api_key``, ``canvas_api_token``, ``api_key``, ``secret``.
+  ``minimax_api_key``, ``gemini_api_key`` (legacy), ``canvas_api_token``, ``api_key``, ``secret``.
 - Free-text patterns: ``Bearer …``, ``gAAAAA…`` Fernet envelopes,
   ``postgresql://`` and ``postgresql+psycopg://`` URLs.
 - Nested dicts and lists are walked recursively.
@@ -46,6 +46,7 @@ class RedactionFilter:
             "tenant_token_key",
             "backend_secret",
             "gemini_api_key",
+            "minimax_api_key",
             "canvas_api_token",
             "api_key",
             "secret",

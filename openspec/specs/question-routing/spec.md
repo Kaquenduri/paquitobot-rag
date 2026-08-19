@@ -8,7 +8,7 @@ Route each authenticated student's question to safe relational, vector, or hybri
 
 ### Requirement: Deterministic-First Routing
 
-The router MUST apply deterministic rules before any model classifier. It SHALL choose relational retrieval for explicit dates, counts, grades, statuses, or aggregations; vector retrieval for semantic explanation; and hybrid retrieval when both evidence types are required. Gemini 2.5 Flash MAY classify only unresolved ambiguity.
+The router MUST apply deterministic rules before any model classifier. It SHALL route explicit dates, counts, grades, statuses, and aggregations to relational retrieval; semantic explanation to vector retrieval; and mixed evidence to hybrid retrieval. MiniMax-M3 (Anthropic-compatible endpoint) MAY classify only unresolved ambiguity and MUST return a supported route label.
 
 #### Scenario: Rule identifies an aggregate question
 
@@ -21,12 +21,12 @@ The router MUST apply deterministic rules before any model classifier. It SHALL 
 
 - GIVEN deterministic rules produce no confident route
 - WHEN routing continues
-- THEN Gemini 2.5 Flash MAY classify the question
+- THEN MiniMax-M3 (Anthropic-compatible endpoint) MAY classify the question
 - AND its output MUST be limited to supported route labels
 
 ### Requirement: Guarded Relational Routing
 
-Every generated relational query MUST match an allow-list and pass validation before execution. Execution MUST use a PostgreSQL read-only role, a bounded `statement_timeout`, a server-enforced row limit, and a server-injected `tenant_id` predicate.
+Every generated relational query MUST be SELECT-only, match an allow-list, and pass structural validation before execution. Execution MUST use a PostgreSQL read-only role, a bounded `statement_timeout`, a server-enforced row limit, parameterized values, and a server-injected `tenant_id` predicate that client or model output cannot override.
 
 #### Scenario: SQL is outside the allow-list
 
@@ -44,7 +44,7 @@ Every generated relational query MUST match an allow-list and pass validation be
 
 ### Requirement: Provider Degradation and Response Language
 
-If Ollama embedding or vector retrieval is unavailable, routing MUST disable vector and hybrid execution and SHALL continue with relational-only answers when supported. Final answers MUST use the language detected from the student's question.
+If Ollama embedding or vector retrieval is unavailable, routing MUST disable vector and hybrid execution and SHALL continue only with supported relational answers. Final answers MUST use the detected language of the student's current question; an unsupported semantic-only request MUST receive a bounded, non-fabricated response in that language.
 
 #### Scenario: Ollama is unavailable
 

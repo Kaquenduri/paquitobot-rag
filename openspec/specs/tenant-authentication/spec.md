@@ -8,7 +8,7 @@ Define backend identity, Canvas credential custody, and tenant authorization bou
 
 ### Requirement: Separate Backend and Canvas Credentials
 
-The system MUST authenticate each backend user independently from Canvas. Each student MAY connect one personal Canvas token, and that token MUST NOT function as a backend session credential.
+The system MUST authenticate each backend user independently from Canvas. Each student MAY connect one personal Canvas token for that student's tenant, and the token MUST NOT function as a backend session credential or authorize another tenant.
 
 #### Scenario: Backend user connects Canvas
 
@@ -25,7 +25,7 @@ The system MUST authenticate each backend user independently from Canvas. Each s
 
 ### Requirement: Encrypted Token Custody
 
-Canvas tokens MUST be encrypted before persistent storage and SHALL be decrypted only transiently for authorized GET requests. Plaintext tokens MUST NOT be stored in database fields, files, caches, traces, metrics, or logs.
+Canvas tokens MUST be encrypted before persistent storage and SHALL be decrypted only transiently for an authorized tenant's GET request. Plaintext tokens MUST NOT be stored or emitted in database fields, files, caches, traces, metrics, logs, exception messages, or API errors.
 
 #### Scenario: Token is persisted
 
@@ -36,12 +36,12 @@ Canvas tokens MUST be encrypted before persistent storage and SHALL be decrypted
 #### Scenario: Token appears in diagnostic context
 
 - GIVEN an operation includes a Canvas token in memory
-- WHEN logging or tracing occurs
+- WHEN logging, tracing, or error serialization occurs
 - THEN the token MUST be redacted before emission
 
 ### Requirement: Server-Enforced Tenant Authorization
 
-The server MUST derive `tenant_id` from authenticated backend identity and MUST NOT trust client-provided tenant identifiers. Protected operations SHALL access only that tenant's records.
+The server MUST derive `tenant_id` exclusively from authenticated backend identity and MUST NOT trust client, Canvas, SQL-model, or vector-metadata tenant identifiers. Protected operations SHALL access only the authenticated tenant's own records.
 
 #### Scenario: Client requests another tenant
 
@@ -52,7 +52,7 @@ The server MUST derive `tenant_id` from authenticated backend identity and MUST 
 
 ### Requirement: Secret-Safe Errors
 
-Errors MUST NOT reveal Canvas tokens, encrypted token material, database URLs, authorization headers, or credential-bearing request bodies.
+Errors and logs MUST NOT reveal Canvas tokens, encrypted token material, database URLs, authorization headers, or credential-bearing request bodies. Redaction MUST apply to success diagnostics, validation failures, Canvas failures, and unexpected exceptions.
 
 #### Scenario: Canvas authentication fails
 
@@ -60,3 +60,9 @@ Errors MUST NOT reveal Canvas tokens, encrypted token material, database URLs, a
 - WHEN the backend returns and logs the failure
 - THEN both outputs MUST use a redacted error
 - AND neither output SHALL contain the token or authorization header
+
+#### Scenario: Unexpected exception contains a token
+
+- GIVEN an exception message or context contains credential material
+- WHEN the exception is logged or serialized
+- THEN the system MUST replace the credential with a redaction marker
